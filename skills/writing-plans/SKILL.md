@@ -117,7 +117,8 @@ After writing the complete plan:
 1. Dispatch a single plan-document-reviewer subagent (see plan-document-reviewer-prompt.md) with precisely crafted review context — never your session history. This keeps the reviewer focused on the plan, not your thought process.
    - Provide: path to the plan document, path to spec document
 2. If ❌ Issues Found: fix the issues, re-dispatch reviewer for the whole plan
-3. If ✅ Approved: proceed to execution handoff
+3. If ✅ Approved: optionally offer external AI consultation on the plan (see consulting-other-ais skill). External providers can read the plan and spec files directly and offer fresh perspectives on task structure, ordering, or missed dependencies. The user decides whether to consult.
+4. Proceed to execution handoff
 
 **Review loop guidance:**
 - Same agent that wrote the plan fixes it (preserves context)
