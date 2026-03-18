@@ -57,10 +57,12 @@ External AI CLIs (Codex, Gemini) run locally and have the same filesystem access
 codex exec --model <model> --sandbox read-only
 ```
 
-**Gemini CLI** runs in `plan` approval mode (read-only):
+**Gemini CLI** runs in `yolo` approval mode (auto-approves reads, can access files outside cwd):
 ```
-gemini -p "" -o text --approval-mode plan -m <model>
+gemini -p "" -o text --approval-mode yolo -m <model>
 ```
+
+> **Why `yolo` instead of `plan`?** Gemini's `plan` mode restricts file reads to the current working directory. Since consultations need to read specs, plans, and code across the project tree, `yolo` is needed. Gemini won't write files unless explicitly asked — and our prompts are read-only in nature. If you want stricter isolation, use `--context` to inline file contents instead of letting Gemini read them.
 
 Both receive the prompt via stdin (avoids shell argument length limits) and explore the codebase as needed.
 
@@ -87,18 +89,53 @@ Before invoking external providers, always present what you plan to send:
 
 Wait for user approval. They may want to adjust the question, add/remove files, or skip entirely.
 
-### 3. Run the Consultation
+### 3. Check Provider Availability
 
-Use the helper script from the project directory:
+Before offering consultation, run the check command to see what's available:
 
 ```bash
+skills/consulting-other-ais/scripts/consult.sh check
+```
+
+This reports which providers are installed and their versions. Only offer providers that are available. If neither is installed, skip the consultation offer entirely.
+
+### 4. Run the Consultation
+
+Use the helper script from the plugin directory. Find it via the plugin install path:
+
+```bash
+# Find the script path (works regardless of install location)
+CONSULT_SCRIPT=$(find ~/.claude/plugins -path "*/consulting-other-ais/scripts/consult.sh" 2>/dev/null | head -1)
+
 # Single provider
-skills/consulting-other-ais/scripts/consult.sh codex "Your focused prompt here"
-skills/consulting-other-ais/scripts/consult.sh gemini "Your focused prompt here"
+"$CONSULT_SCRIPT" codex "Your focused prompt here"
+"$CONSULT_SCRIPT" gemini "Your focused prompt here"
 
 # Both in parallel
-skills/consulting-other-ais/scripts/consult.sh both "Your focused prompt here"
+"$CONSULT_SCRIPT" both "Your focused prompt here"
 ```
+
+**Including inline context** — when the provider needs to see a specific excerpt (a function, a config snippet) without searching for it, use `--context`:
+
+```bash
+# Include a whole file
+"$CONSULT_SCRIPT" --context src/auth/refresh.py codex "What edge cases does this refresh logic miss?"
+
+# Include specific line ranges from multiple files
+"$CONSULT_SCRIPT" --context src/auth/refresh.py:40-80 --context src/auth/tokens.py:1-25 gemini "Are these two modules properly coordinated?"
+
+# Override model for a specific consultation
+"$CONSULT_SCRIPT" --model gpt-5.3-codex codex "Quick sanity check on this approach"
+
+# Override timeout for a long-running analysis
+"$CONSULT_SCRIPT" --timeout 300 both "Deep review of this architecture"
+```
+
+The `--context` flag appends file contents (or line ranges) directly into the prompt. Use it for small, focused excerpts. For large files, prefer giving paths and letting the provider read them.
+
+The `--model` flag overrides the provider model for a single invocation. With `both`, it applies to both providers (use env vars for per-provider control).
+
+The `--timeout` flag overrides the timeout (default 300s) for this invocation.
 
 Or invoke directly via Bash tool if the script isn't available:
 
@@ -106,9 +143,11 @@ Or invoke directly via Bash tool if the script isn't available:
 # Codex (read-only)
 printf '%s' "$PROMPT" | codex exec --model gpt-5.4 --sandbox read-only
 
-# Gemini (plan/read-only mode)
-printf '%s' "$PROMPT" | env NODE_NO_WARNINGS=1 gemini -p "" -o text --approval-mode plan
+# Gemini (yolo mode — no writes in practice, but can read files outside cwd)
+printf '%s' "$PROMPT" | env NODE_NO_WARNINGS=1 gemini -p "" -o text --approval-mode yolo
 ```
+
+The script automatically filters CLI boilerplate (startup banners, spinners, progress indicators) from the output so you get clean responses.
 
 ### 4. Synthesize
 
@@ -220,20 +259,30 @@ This skill is a **tool**, not a phase gate. It integrates as an optional step wi
 
 Never make consultation mandatory. Always offer, let the user decide.
 
-## Checking Provider Availability
+## Configuration
 
-Before offering consultation, verify providers are available:
+**CLI flags** (per-invocation overrides):
 
-```bash
-command -v codex >/dev/null 2>&1 && echo "codex: available" || echo "codex: not found"
-command -v gemini >/dev/null 2>&1 && echo "gemini: available" || echo "gemini: not found"
-```
+| Flag | Description |
+|------|-------------|
+| `--context <file[:start-end]>` | Include file contents inline (repeatable) |
+| `--model <model>` | Override model for this invocation |
+| `--timeout <seconds>` | Override timeout for this invocation |
 
-Only offer providers that are installed. If neither is available, skip the consultation offer entirely.
+**Environment variables** (persistent defaults):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CONSULT_CODEX_MODEL` | `gpt-5.4` | Codex model to use |
+| `CONSULT_GEMINI_MODEL` | `gemini-3.1-pro-preview` | Gemini model to use |
+| `CONSULT_TIMEOUT` | `300` | Timeout in seconds per provider |
+| `CONSULT_OUTPUT_DIR` | `/tmp/consult-results` | Where result files are saved |
+
+Results are saved to `$CONSULT_OUTPUT_DIR/codex-<timestamp>.md` and `gemini-<timestamp>.md` for reference.
 
 ## Common Mistakes
 
-**Sending too much context:** Don't paste file contents. Give paths and let them read.
+**Sending too much context:** Don't paste entire files. Give paths and let them read. If you need to highlight a specific section, use `--context file.py:40-80` to include just that excerpt.
 
 **Too broad a question:** "Review my project" gets shallow responses. "What edge cases does the auth token refresh in `src/auth/refresh.py` miss?" gets useful ones.
 
