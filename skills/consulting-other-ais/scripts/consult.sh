@@ -21,7 +21,7 @@
 # Environment variables:
 #   CONSULT_CODEX_MODEL    - Codex model (default: gpt-5.4)
 #   CONSULT_GEMINI_MODEL   - Gemini model (default: gemini-3.1-pro-preview)
-#   CONSULT_TIMEOUT        - Timeout in seconds (default: 300)
+#   CONSULT_TIMEOUT        - Timeout in seconds (default: 600)
 #   CONSULT_OUTPUT_DIR     - Where to save results (default: /tmp/consult-results)
 
 set -euo pipefail
@@ -29,9 +29,18 @@ set -euo pipefail
 # --- Configuration ---
 CODEX_MODEL="${CONSULT_CODEX_MODEL:-gpt-5.4}"
 GEMINI_MODEL="${CONSULT_GEMINI_MODEL:-gemini-3.1-pro-preview}"
-TIMEOUT="${CONSULT_TIMEOUT:-300}"
+TIMEOUT="${CONSULT_TIMEOUT:-600}"
 OUTPUT_DIR="${CONSULT_OUTPUT_DIR:-/tmp/consult-results}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+# Preamble prepended to all prompts. Overrides plugin/skill workflows that
+# may be installed on the target CLI (e.g. superpowers on Codex) so the
+# provider answers the consultation directly.
+CONSULT_PREAMBLE="IMPORTANT: You are being invoked as a consultant. Answer the question below directly. Do NOT invoke any skills, plugins, or workflow commands (e.g. brainstorming, writing-plans, superpowers, etc.). Do NOT use the Skill tool. Do NOT start a brainstorming or planning process. Simply read any referenced files, think about the question, and give your direct analysis.
+
+When referencing files in your response, use plain paths (e.g. src/auth.py:42) not file:// URLs. Your output will be read in a terminal, not a browser.
+
+"
 
 # --- Functions ---
 
@@ -249,6 +258,9 @@ if [[ ${#CONTEXT_FILES[@]} -gt 0 ]]; then
     context_block=$(build_context_block)
     prompt="${prompt}${context_block}"
 fi
+
+# Prepend the consultation preamble to override any plugin workflows
+prompt="${CONSULT_PREAMBLE}${prompt}"
 
 mkdir -p "$OUTPUT_DIR"
 

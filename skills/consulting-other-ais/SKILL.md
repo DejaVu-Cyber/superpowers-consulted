@@ -135,7 +135,7 @@ The `--context` flag appends file contents (or line ranges) directly into the pr
 
 The `--model` flag overrides the provider model for a single invocation. With `both`, it applies to both providers (use env vars for per-provider control).
 
-The `--timeout` flag overrides the timeout (default 300s) for this invocation.
+The `--timeout` flag overrides the timeout (default 600s) for this invocation.
 
 Or invoke directly via Bash tool if the script isn't available:
 
@@ -275,7 +275,7 @@ Never make consultation mandatory. Always offer, let the user decide.
 |----------|---------|-------------|
 | `CONSULT_CODEX_MODEL` | `gpt-5.4` | Codex model to use |
 | `CONSULT_GEMINI_MODEL` | `gemini-3.1-pro-preview` | Gemini model to use |
-| `CONSULT_TIMEOUT` | `300` | Timeout in seconds per provider |
+| `CONSULT_TIMEOUT` | `600` | Timeout in seconds per provider |
 | `CONSULT_OUTPUT_DIR` | `/tmp/consult-results` | Where result files are saved |
 
 Results are saved to `$CONSULT_OUTPUT_DIR/codex-<timestamp>.md` and `gemini-<timestamp>.md` for reference.
