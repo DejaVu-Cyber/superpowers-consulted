@@ -46,7 +46,50 @@ git merge-base HEAD main 2>/dev/null || git merge-base HEAD master 2>/dev/null
 
 Or ask: "This branch split from main - is that correct?"
 
-### Step 3: Present Options
+### Step 3: Offer External AI Review (Optional)
+
+After tests pass and the base branch is known, offer external AI consultation on the branch diff. This gives fresh perspectives on the changes before merge or PR.
+
+**Generate the diff context:**
+```bash
+# Get the diff for the branch
+git diff <base-branch>...HEAD
+```
+
+**Offer the review:**
+```
+Tests pass. Before we proceed, would you like external AI review of these changes?
+
+I'd send the branch diff to [available providers]:
+- **Codex**: Code quality, patterns, edge cases
+- **Gemini**: Architecture, naming, missed tests
+
+[Yes - both / Codex only / Gemini only / Skip]
+```
+
+If the user approves, use the `consulting-other-ais` skill:
+- Send the diff via `--context` (pipe `git diff` output to a temp file, pass as `--context`)
+- Include the branch name and a brief description of what the changes do
+- Use a review-focused prompt:
+
+```
+Review this branch diff for merge readiness. Focus on:
+1. Bugs or logic errors
+2. Missing error handling or edge cases
+3. Test coverage gaps
+4. Naming, structure, or readability issues
+
+Be specific — reference file paths and line numbers. Flag only issues worth fixing before merge.
+```
+
+**Synthesize results** with clear attribution, then ask:
+```
+Ready to proceed. What would you like to do?
+```
+
+If the user skips or no providers are available, continue directly to Step 4.
+
+### Step 4: Present Options
 
 Present exactly these 4 options:
 
@@ -63,7 +106,7 @@ Which option?
 
 **Don't add explanation** - keep options concise.
 
-### Step 4: Execute Choice
+### Step 5: Execute Choice
 
 #### Option 1: Merge Locally
 
@@ -84,7 +127,7 @@ git merge <feature-branch>
 git branch -d <feature-branch>
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Cleanup worktree (Step 6)
 
 #### Option 2: Push and Create PR
 
@@ -103,7 +146,7 @@ EOF
 )"
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Cleanup worktree (Step 6)
 
 #### Option 3: Keep As-Is
 
@@ -131,9 +174,9 @@ git checkout <base-branch>
 git branch -D <feature-branch>
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Cleanup worktree (Step 6)
 
-### Step 5: Cleanup Worktree
+### Step 6: Cleanup Worktree
 
 **For Options 1, 2, 4:**
 
@@ -198,3 +241,4 @@ git worktree remove <worktree-path>
 
 **Pairs with:**
 - **using-git-worktrees** - Cleans up worktree created by that skill
+- **consulting-other-ais** - Optional external AI review of branch diff before merge/PR
