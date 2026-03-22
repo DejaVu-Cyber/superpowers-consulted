@@ -98,6 +98,51 @@ gemini extensions update superpowers
 
 Start a new session in your chosen platform and ask for something that should trigger a skill (for example, "help me plan this feature" or "let's debug this issue"). The agent should automatically invoke the relevant superpowers skill.
 
+### Prerequisites for Multi-AI Consultation
+
+The `consulting-other-ais` skill invokes external AI CLIs (Codex, Gemini) for multi-perspective reviews. These are optional — the skill checks availability and only offers providers that are installed.
+
+**Codex CLI** — Install from [OpenAI](https://github.com/openai/codex). Requires authentication via `codex auth` (ChatGPT OAuth or API key).
+
+**Gemini CLI** — Install from [Google](https://github.com/google-gemini/gemini-cli). Requires a Gemini API key.
+
+#### Linux: Codex Sandbox Fix (Kernel 6.2+)
+
+Codex's `read-only` sandbox uses [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) to create network namespaces. On Linux kernels 6.2+ with AppArmor, unprivileged user namespaces are restricted by default (`kernel.apparmor_restrict_unprivileged_userns=1`), which causes `bwrap` to fail with:
+
+```
+bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted
+```
+
+The consultation script auto-detects this and falls back to `danger-full-access` mode, but if you want the safer `read-only` sandbox, apply one of these fixes:
+
+**Option 1 (Recommended): AppArmor profile for bwrap**
+
+```bash
+# Create the profile
+sudo tee /etc/apparmor.d/bwrap <<'EOF'
+abi <abi/4.0>,
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+}
+EOF
+
+# Load it
+sudo apparmor_parser -r /etc/apparmor.d/bwrap
+```
+
+This grants `bwrap` permission to create user namespaces while keeping the restriction for all other programs.
+
+**Option 2: Disable the restriction system-wide** (less secure)
+
+```bash
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+# To persist across reboots:
+echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee /etc/sysctl.d/99-userns.conf
+```
+
+**Option 3: Do nothing** — The consultation script probes sandbox capability at first use and caches the result. If `read-only` fails, it automatically uses `danger-full-access` (no network sandbox, but Codex still only receives read-oriented prompts).
+
 ## The Basic Workflow
 
 1. **brainstorming** - Activates before writing code. Refines rough ideas through questions, explores alternatives, presents design in sections for validation. Saves design document.
