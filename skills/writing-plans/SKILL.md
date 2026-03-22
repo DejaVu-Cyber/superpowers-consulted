@@ -7,9 +7,9 @@ description: Use when you have a spec or requirements for a multi-step task, bef
 
 ## Overview
 
-Write comprehensive implementation plans assuming the engineer has zero context for our codebase and questionable taste. Document everything they need to know: which files to touch for each task, code, testing, docs they might need to check, how to test it. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
+Write implementation plans that capture **decisions**, not code. The implementing agent is capable — it can read files, understand patterns, write tests, and figure out implementation details. What it can't do is make architectural decisions, know scope boundaries, or understand constraints that aren't in the code.
 
-Assume they are a skilled developer, but know almost nothing about our toolset or problem domain. Assume they don't know good test design very well.
+Your plan should answer: *what* to build, *where* to put it, *how the pieces connect*, and *what not to do*. Let the implementer figure out the code.
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
@@ -33,14 +33,16 @@ Before defining tasks, map out which files will be created or modified and what 
 
 This structure informs the task decomposition. Each task should produce self-contained changes that make sense independently.
 
-## Bite-Sized Task Granularity
+## Task Granularity
 
-**Each step is one action (2-5 minutes):**
-- "Write the failing test" - step
-- "Run it to make sure it fails" - step
-- "Implement the minimal code to make the test pass" - step
-- "Run the tests and make sure they pass" - step
-- "Commit" - step
+Each task should be a coherent unit of work that produces a testable result. A task might be:
+- "Implement the token refresh module with retry logic"
+- "Add validation middleware for the /users endpoint"
+- "Create the database migration and model for audit logs"
+
+A task should NOT be a single TDD micro-step like "write the failing test" or "run the test." The implementer follows TDD discipline on its own — the plan doesn't need to spell out every red-green-refactor cycle.
+
+**Right-size a task:** Small enough that a single agent can hold the context. Large enough to be a meaningful, committable unit. Typically 1-3 files changed.
 
 ## Plan Document Header
 
@@ -67,47 +69,69 @@ This structure informs the task decomposition. Each task should produce self-con
 
 **Files:**
 - Create: `exact/path/to/file.py`
-- Modify: `exact/path/to/existing.py:123-145`
-- Test: `tests/exact/path/to/test.py`
+- Modify: `exact/path/to/existing.py` (specifically: the `authenticate()` method)
+- Test: `tests/exact/path/to/test_file.py`
 
-- [ ] **Step 1: Write the failing test**
+**What to build:**
+[1-3 sentences describing the component's purpose and behavior]
 
+**Interface:**
 ```python
-def test_specific_behavior():
-    result = function(input)
-    assert result == expected
+def refresh_token(token: str, max_retries: int = 3) -> TokenResult:
+    """Refresh an expired auth token with retry logic.
+    Returns TokenResult with new token or raises AuthError after exhausting retries."""
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+**Behavior to test:**
+- Successful refresh returns new token with updated expiry
+- Expired refresh token raises `AuthError`
+- Retries on transient network errors up to `max_retries`
+- Does NOT retry on 401 (invalid credentials — distinct from expired)
 
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: FAIL with "function not defined"
+**Constraints:**
+- Must use the existing `HttpClient` from `src/http.py`, not raw requests
+- Token storage goes through `TokenStore` interface, not direct file I/O
+- Follow the retry pattern in `src/jobs/retry.py` (exponential backoff)
 
-- [ ] **Step 3: Write minimal implementation**
-
-```python
-def function(input):
-    return expected
-```
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add tests/path/test.py src/path/file.py
-git commit -m "feat: add specific feature"
-```
+**Depends on:** Task 1 (TokenStore interface)
 ````
+
+## What Goes in the Plan vs. What Doesn't
+
+**Include — decisions the implementer shouldn't make alone:**
+- Exact file paths and what each file is responsible for
+- Interface signatures (function/class/API contracts)
+- What behaviors to test (assertions, not full test code)
+- Constraints and gotchas (things they'd get wrong without being told)
+- Dependencies between tasks
+- Which existing code to reuse or follow as a pattern
+- What is explicitly OUT of scope for each task
+
+**Omit — things the implementer can figure out by reading the codebase:**
+- Full implementation code (they'll write better code after reading actual files)
+- Full test code (they can follow existing test patterns)
+- Exact git commands and commit messages
+- Step-by-step TDD ceremony (the test-driven-development skill handles this)
+- Boilerplate they can infer from surrounding code
+
+**The test:** If you deleted the plan and just gave someone the spec + file structure + interface contracts + constraints, could they build it? If yes, the plan has the right level of detail. If they'd make wrong architectural choices, add more guidance on *decisions*. If they'd write the wrong code, that's what tests and review catch — not the plan.
+
+## When to Include Code
+
+Sometimes a code snippet IS the clearest way to communicate a decision. Use code when:
+
+- The interface signature captures a design decision (parameters, return types, error types)
+- A data structure defines the shape of something (schema, config format)
+- A non-obvious algorithm or pattern needs to be specified (not "add validation" but not full implementation either — show the approach)
+- An existing codebase pattern should be followed (show a 5-line example from the codebase, say "follow this pattern")
+
+Don't include code just to be thorough. Include it when it communicates a decision more precisely than prose.
 
 ## Remember
 - Exact file paths always
-- Complete code in plan (not "add validation")
-- Exact commands with expected output
-- Reference relevant skills with @ syntax
+- Decisions, interfaces, and constraints — not complete code
+- Behavior to test, not full test implementations
+- Reference existing code patterns the implementer should follow
 - DRY, YAGNI, TDD, frequent commits
 
 ## Plan Review Loop
