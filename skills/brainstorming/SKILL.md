@@ -23,13 +23,14 @@ You MUST create a task for each of these items and complete them in order:
 
 1. **Explore project context** — check files, docs, recent commits
 2. **Offer visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question. See the Visual Companion section below.
-3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
+3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria. After 2-3 exchanges when you have enough context to describe the problem, offer to enrich the question pool with external AI perspectives (see "Multi-Perspective Questions" below).
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
 5. **Present design** — in sections scaled to their complexity, get user approval after each section
-6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
-7. **Spec review loop** — offer a 3-way review: dispatch spec-document-reviewer subagent alongside external AI providers (Codex/Gemini) via consulting-other-ais skill. See "Spec Review Loop" section below for the combined review flow.
-8. **User reviews written spec** — ask user to review the spec file before proceeding
-9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+6. **External design challenge (one round)** — after user approves the design, offer to send it to external AIs for pushback before writing it up. One round only. See "Design Challenge Round" below.
+7. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+8. **Spec review loop** — offer a 3-way review: dispatch spec-document-reviewer subagent alongside external AI providers (Codex/Gemini) via consulting-other-ais skill. See "Spec Review Loop" section below for the combined review flow.
+9. **User reviews written spec** — ask user to review the spec file before proceeding
+10. **Transition to implementation** — invoke writing-plans skill to create implementation plan
 
 ## Process Flow
 
@@ -38,10 +39,16 @@ digraph brainstorming {
     "Explore project context" [shape=box];
     "Visual questions ahead?" [shape=diamond];
     "Offer Visual Companion\n(own message, no other content)" [shape=box];
-    "Ask clarifying questions" [shape=box];
+    "Ask clarifying questions\n(Claude's own)" [shape=box];
+    "Enrich questions?\n(external AIs)" [shape=diamond];
+    "Get external AI questions\n(one round)" [shape=box];
+    "Continue clarifying\n(merged question pool)" [shape=box];
     "Propose 2-3 approaches" [shape=box];
     "Present design sections" [shape=box];
     "User approves design?" [shape=diamond];
+    "Design challenge?\n(external AIs)" [shape=diamond];
+    "External pushback\n(one round)" [shape=box];
+    "User addresses\npushback" [shape=box];
     "Write design doc" [shape=box];
     "3-way review:\nsubagent + external AIs?" [shape=diamond];
     "Run combined review\n(subagent + Codex/Gemini)" [shape=box];
@@ -52,13 +59,21 @@ digraph brainstorming {
 
     "Explore project context" -> "Visual questions ahead?";
     "Visual questions ahead?" -> "Offer Visual Companion\n(own message, no other content)" [label="yes"];
-    "Visual questions ahead?" -> "Ask clarifying questions" [label="no"];
-    "Offer Visual Companion\n(own message, no other content)" -> "Ask clarifying questions";
-    "Ask clarifying questions" -> "Propose 2-3 approaches";
+    "Visual questions ahead?" -> "Ask clarifying questions\n(Claude's own)" [label="no"];
+    "Offer Visual Companion\n(own message, no other content)" -> "Ask clarifying questions\n(Claude's own)";
+    "Ask clarifying questions\n(Claude's own)" -> "Enrich questions?\n(external AIs)" [label="after 2-3\nexchanges"];
+    "Enrich questions?\n(external AIs)" -> "Get external AI questions\n(one round)" [label="yes"];
+    "Enrich questions?\n(external AIs)" -> "Continue clarifying\n(merged question pool)" [label="skip"];
+    "Get external AI questions\n(one round)" -> "Continue clarifying\n(merged question pool)";
+    "Continue clarifying\n(merged question pool)" -> "Propose 2-3 approaches";
     "Propose 2-3 approaches" -> "Present design sections";
     "Present design sections" -> "User approves design?";
     "User approves design?" -> "Present design sections" [label="no, revise"];
-    "User approves design?" -> "Write design doc" [label="yes"];
+    "User approves design?" -> "Design challenge?\n(external AIs)" [label="yes"];
+    "Design challenge?\n(external AIs)" -> "External pushback\n(one round)" [label="yes"];
+    "Design challenge?\n(external AIs)" -> "Write design doc" [label="skip"];
+    "External pushback\n(one round)" -> "User addresses\npushback";
+    "User addresses\npushback" -> "Write design doc";
     "Write design doc" -> "3-way review:\nsubagent + external AIs?";
     "3-way review:\nsubagent + external AIs?" -> "Run combined review\n(subagent + Codex/Gemini)" [label="3-way"];
     "3-way review:\nsubagent + external AIs?" -> "Run subagent review only" [label="subagent only"];
@@ -84,6 +99,33 @@ digraph brainstorming {
 - Prefer multiple choice questions when possible, but open-ended is fine too
 - Only one question per message - if a topic needs more exploration, break it into multiple questions
 - Focus on understanding: purpose, constraints, success criteria
+
+**Multi-Perspective Questions (optional, after 2-3 exchanges):**
+
+Once you have enough context to describe the problem (typically after 2-3 clarifying questions), offer to get external AI perspectives on what else to ask:
+
+> "I have a good sense of the basics. Want me to get Codex and Gemini's take on what else we should nail down before designing? They sometimes catch angles I miss."
+>
+> [Yes / No, I think we're good]
+
+If yes, send a brief summary to external AIs via consulting-other-ais:
+
+```
+We're designing [brief description]. Here's what we know so far:
+- [Key decisions/answers from conversation so far]
+- [Constraints identified]
+
+What clarifying questions would you ask before designing this?
+Focus on questions that cover different ground from what's already answered.
+```
+
+When results come back, deduplicate against your own remaining questions and merge into your question pool. Present them one at a time as usual, attributing where each came from:
+
+> Here are a few more questions — some from my own analysis, some raised by Codex and Gemini:
+>
+> [Codex] Have you considered whether this needs to work offline?
+
+Continue asking one at a time through the merged pool. Don't ask questions that overlap with what's already been answered.
 
 **Exploring approaches:**
 
@@ -111,6 +153,44 @@ digraph brainstorming {
 - Explore the current structure before proposing changes. Follow existing patterns.
 - Where existing code has problems that affect the work (e.g., a file that's grown too large, unclear boundaries, tangled responsibilities), include targeted improvements as part of the design - the way a good developer improves code they're working in.
 - Don't propose unrelated refactoring. Stay focused on what serves the current goal.
+
+## Design Challenge Round (optional, one round)
+
+After the user approves the design but before writing it up, offer one round of external pushback:
+
+> "Design looks good to me too. Before I write it up, want me to send it to Codex and Gemini for a challenge round? They'll push back on assumptions, flag risks, and suggest alternatives we might have missed. One round — then we decide what to adjust."
+>
+> [Yes / No, write it up]
+
+If yes, send a summary of the approved design (not the full conversation — just the design as presented) to external AIs:
+
+```
+We've designed [brief description]. Here's the design:
+
+[Design summary — architecture, components, data flow, key decisions]
+
+Challenge this design:
+1. What assumptions might be wrong?
+2. What risks or failure modes are we not accounting for?
+3. Is there a simpler way to achieve the same goals?
+4. What would you do differently and why?
+
+Be specific and constructive. Push back where it matters, not on style preferences.
+```
+
+Present the challenges with attribution:
+
+> **Codex challenges:**
+> - [specific pushback]
+>
+> **Gemini challenges:**
+> - [specific pushback]
+>
+> **My take:** [which challenges have merit, which are noise]
+>
+> Want to adjust anything before I write up the spec?
+
+The user decides which pushback items (if any) to incorporate. Then proceed to writing the design doc. **This is one round only** — do not re-consult after adjustments.
 
 ## After the Design
 
