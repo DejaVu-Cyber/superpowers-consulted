@@ -25,12 +25,11 @@ You MUST create a task for each of these items and complete them in order:
 2. **Offer visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question. See the Visual Companion section below.
 3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
-5. **Offer external consultation** (optional) — if external AI providers are available, offer to get alternative perspectives on the approaches. See the consulting-other-ais skill. The user decides whether to consult, which providers, and approves what gets sent.
-6. **Present design** — in sections scaled to their complexity, get user approval after each section
-7. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
-8. **Spec review loop** — dispatch spec-document-reviewer subagent with precisely crafted review context (never your session history); fix issues and re-dispatch until approved (max 3 iterations, then surface to human). Optionally offer external AI review of the spec alongside the subagent review (see consulting-other-ais skill).
-9. **User reviews written spec** — ask user to review the spec file before proceeding
-10. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+5. **Present design** — in sections scaled to their complexity, get user approval after each section
+6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+7. **Spec review loop** — offer a 3-way review: dispatch spec-document-reviewer subagent alongside external AI providers (Codex/Gemini) via consulting-other-ais skill. See "Spec Review Loop" section below for the combined review flow.
+8. **User reviews written spec** — ask user to review the spec file before proceeding
+9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
 
 ## Process Flow
 
@@ -41,13 +40,13 @@ digraph brainstorming {
     "Offer Visual Companion\n(own message, no other content)" [shape=box];
     "Ask clarifying questions" [shape=box];
     "Propose 2-3 approaches" [shape=box];
-    "Offer external consultation?\n(consulting-other-ais)" [shape=diamond];
-    "Consult external AIs\n(user-approved prompt)" [shape=box];
     "Present design sections" [shape=box];
     "User approves design?" [shape=diamond];
     "Write design doc" [shape=box];
-    "Spec review loop" [shape=box];
-    "Spec review passed?" [shape=diamond];
+    "3-way review:\nsubagent + external AIs?" [shape=diamond];
+    "Run combined review\n(subagent + Codex/Gemini)" [shape=box];
+    "Run subagent review only" [shape=box];
+    "Review passed?" [shape=diamond];
     "User reviews spec?" [shape=diamond];
     "Invoke writing-plans skill" [shape=doublecircle];
 
@@ -56,17 +55,17 @@ digraph brainstorming {
     "Visual questions ahead?" -> "Ask clarifying questions" [label="no"];
     "Offer Visual Companion\n(own message, no other content)" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
-    "Propose 2-3 approaches" -> "Offer external consultation?\n(consulting-other-ais)";
-    "Offer external consultation?\n(consulting-other-ais)" -> "Consult external AIs\n(user-approved prompt)" [label="user says yes"];
-    "Offer external consultation?\n(consulting-other-ais)" -> "Present design sections" [label="skip"];
-    "Consult external AIs\n(user-approved prompt)" -> "Present design sections";
+    "Propose 2-3 approaches" -> "Present design sections";
     "Present design sections" -> "User approves design?";
     "User approves design?" -> "Present design sections" [label="no, revise"];
     "User approves design?" -> "Write design doc" [label="yes"];
-    "Write design doc" -> "Spec review loop";
-    "Spec review loop" -> "Spec review passed?";
-    "Spec review passed?" -> "Spec review loop" [label="issues found,\nfix and re-dispatch"];
-    "Spec review passed?" -> "User reviews spec?" [label="approved"];
+    "Write design doc" -> "3-way review:\nsubagent + external AIs?";
+    "3-way review:\nsubagent + external AIs?" -> "Run combined review\n(subagent + Codex/Gemini)" [label="3-way"];
+    "3-way review:\nsubagent + external AIs?" -> "Run subagent review only" [label="subagent only"];
+    "Run combined review\n(subagent + Codex/Gemini)" -> "Review passed?";
+    "Run subagent review only" -> "Review passed?";
+    "Review passed?" -> "Write design doc" [label="issues found,\nfix and re-review"];
+    "Review passed?" -> "User reviews spec?" [label="approved"];
     "User reviews spec?" -> "Write design doc" [label="changes requested"];
     "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
 }
@@ -123,11 +122,21 @@ digraph brainstorming {
 - Commit the design document to git
 
 **Spec Review Loop:**
-After writing the spec document:
+After writing the spec document, offer a combined review:
 
-1. Dispatch spec-document-reviewer subagent (see spec-document-reviewer-prompt.md)
-2. If Issues Found: fix, re-dispatch, repeat until Approved
-3. If loop exceeds 3 iterations, surface to human for guidance
+> "Spec written. How would you like it reviewed?"
+>
+> 1. **3-way review** — subagent + Codex + Gemini (recommended for non-trivial designs)
+> 2. **Subagent only** — standard spec-document-reviewer
+> 3. **Skip review** — go straight to user review
+
+**If 3-way review:** Run the spec-document-reviewer subagent and external AI consultations in parallel. The subagent uses the spec-document-reviewer-prompt.md template. External AIs get the spec file path and a design review prompt via consulting-other-ais. Synthesize all findings into a single list of issues, noting which reviewer raised each one.
+
+**If subagent only:** Dispatch spec-document-reviewer subagent as usual (see spec-document-reviewer-prompt.md).
+
+**For both paths:**
+1. If Issues Found: fix, re-review (re-run whichever reviewers were used), repeat until approved
+2. If loop exceeds 3 iterations, surface to human for guidance
 
 **User Review Gate:**
 After the spec review loop passes, ask the user to review the written spec before proceeding:

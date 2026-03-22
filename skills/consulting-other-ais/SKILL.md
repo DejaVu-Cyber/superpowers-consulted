@@ -250,11 +250,11 @@ Always get user approval before invoking. For expensive consultations (large cod
 
 ## Integration with Other Skills
 
-This skill is a **tool**, not a phase gate. It integrates as an optional step within existing workflows:
+This skill is a **tool**, not a phase gate. It integrates into existing review loops so external perspectives are part of the same decision, not a separate step:
 
-- **brainstorming** step 4: After proposing approaches, offer to consult for alternatives
-- **brainstorming** step 7: During spec review, offer external review alongside subagent review
-- **writing-plans** review loop: Offer external critique alongside plan-document-reviewer
+- **brainstorming** spec review loop: Offer 3-way review (subagent + Codex + Gemini) as a single choice alongside subagent-only review
+- **writing-plans** plan review loop: Same 3-way review option for plan critique
+- **finishing-a-development-branch**: Optional external review of branch diff before merge/PR
 - **systematic-debugging**: When stuck, offer fresh-eyes consultation
 
 Never make consultation mandatory. Always offer, let the user decide.

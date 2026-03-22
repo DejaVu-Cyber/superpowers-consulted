@@ -112,17 +112,25 @@ git commit -m "feat: add specific feature"
 
 ## Plan Review Loop
 
-After writing the complete plan:
+After writing the complete plan, offer a combined review:
 
-1. Dispatch a single plan-document-reviewer subagent (see plan-document-reviewer-prompt.md) with precisely crafted review context — never your session history. This keeps the reviewer focused on the plan, not your thought process.
-   - Provide: path to the plan document, path to spec document
-2. If ❌ Issues Found: fix the issues, re-dispatch reviewer for the whole plan
-3. If ✅ Approved: optionally offer external AI consultation on the plan (see consulting-other-ais skill). External providers can read the plan and spec files directly and offer fresh perspectives on task structure, ordering, or missed dependencies. The user decides whether to consult.
-4. Proceed to execution handoff
+> "Plan written. How would you like it reviewed?"
+>
+> 1. **3-way review** — subagent + Codex + Gemini (recommended for complex plans)
+> 2. **Subagent only** — standard plan-document-reviewer
+> 3. **Skip review** — go straight to execution handoff
+
+**If 3-way review:** Run the plan-document-reviewer subagent and external AI consultations in parallel. The subagent uses the plan-document-reviewer-prompt.md template. External AIs get the plan and spec file paths and a plan critique prompt via consulting-other-ais (focus: task structure, ordering, missed dependencies, unnecessary complexity). Synthesize all findings into a single list of issues, noting which reviewer raised each one.
+
+**If subagent only:** Dispatch plan-document-reviewer subagent as usual (see plan-document-reviewer-prompt.md). Provide path to the plan document and spec document. Never send your session history.
+
+**For both paths:**
+1. If ❌ Issues Found: fix the issues, re-review (re-run whichever reviewers were used)
+2. If ✅ Approved: proceed to execution handoff
+3. If loop exceeds 3 iterations, surface to human for guidance
 
 **Review loop guidance:**
 - Same agent that wrote the plan fixes it (preserves context)
-- If loop exceeds 3 iterations, surface to human for guidance
 - Reviewers are advisory — explain disagreements if you believe feedback is incorrect
 
 ## Execution Handoff
