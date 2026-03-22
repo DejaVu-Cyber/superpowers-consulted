@@ -23,6 +23,8 @@
 #   CONSULT_GEMINI_MODEL   - Gemini model (default: gemini-3.1-pro-preview)
 #   CONSULT_TIMEOUT        - Timeout in seconds (default: 600)
 #   CONSULT_OUTPUT_DIR     - Where to save results (default: /tmp/consult-results)
+#   CONSULT_CODEX_SANDBOX  - Codex sandbox mode (default: auto-detect)
+#                            Values: read-only, danger-full-access, auto
 
 set -euo pipefail
 
@@ -31,6 +33,7 @@ CODEX_MODEL="${CONSULT_CODEX_MODEL:-gpt-5.4}"
 GEMINI_MODEL="${CONSULT_GEMINI_MODEL:-gemini-3.1-pro-preview}"
 TIMEOUT="${CONSULT_TIMEOUT:-600}"
 OUTPUT_DIR="${CONSULT_OUTPUT_DIR:-/tmp/consult-results}"
+CODEX_SANDBOX="${CONSULT_CODEX_SANDBOX:-auto}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
 # Preamble prepended to all prompts. Overrides plugin/skill workflows that
@@ -64,12 +67,12 @@ require_provider() {
 filter_output() {
     sed \
         -e '/^Codex /d' \
-        -e '/^codex /d' \
+        -e '/^codex$/d' \
         -e '/^⠋/d' -e '/^⠙/d' -e '/^⠹/d' -e '/^⠸/d' \
         -e '/^⠼/d' -e '/^⠴/d' -e '/^⠦/d' -e '/^⠧/d' \
         -e '/^⠇/d' -e '/^⠏/d' \
         -e '/^Gemini /d' \
-        -e '/^gemini /d' \
+        -e '/^gemini$/d' \
         -e '/^✦ /d' \
         -e '/^╭/d' -e '/^│/d' -e '/^╰/d' \
         -e '/^┌/d' -e '/^└/d' \
@@ -81,7 +84,59 @@ filter_output() {
         -e '/^\[.*spinner\]/d' \
         -e '/^Thinking\.\.\./d' \
         -e '/^Reading /d' \
-        -e '/^Searching /d'
+        -e '/^Searching /d' \
+        -e '/^exec$/d' \
+        -e '/^tokens used$/d' \
+        -e '/^[0-9,]*$/d'
+}
+
+# Detect whether the bwrap sandbox works on this system.
+# Returns 0 if bwrap sandbox is functional, 1 if broken.
+# Caches the result for the session in a temp file.
+detect_codex_sandbox() {
+    local cache_file="/tmp/.consult-sandbox-probe-$$"
+
+    # If user explicitly set a sandbox mode, use it
+    if [[ "$CODEX_SANDBOX" != "auto" ]]; then
+        echo "$CODEX_SANDBOX"
+        return
+    fi
+
+    # Check cached probe result (valid for this shell session)
+    if [[ -f "/tmp/.consult-sandbox-ok" ]]; then
+        cat "/tmp/.consult-sandbox-ok"
+        return
+    fi
+
+    echo "Probing Codex sandbox compatibility..." >&2
+
+    # Probe: ask Codex to actually read a file in read-only mode.
+    # A trivial "reply with X" prompt doesn't test filesystem access.
+    local probe_file="/etc/hostname"
+    local expected_content
+    expected_content=$(cat "$probe_file" 2>/dev/null || echo "")
+
+    if [[ -z "$expected_content" ]]; then
+        # Fallback: if /etc/hostname doesn't exist, skip probe and use safe default
+        echo "danger-full-access" > "/tmp/.consult-sandbox-ok"
+        echo "Sandbox probe: skipped (no probe file), using danger-full-access." >&2
+        echo "danger-full-access"
+        return
+    fi
+
+    local probe_result probe_exit=0
+    probe_result=$(printf '%s' "Read the file $probe_file and reply with ONLY its contents, nothing else." | timeout 45 \
+        codex exec --model "$CODEX_MODEL" --sandbox read-only --ephemeral 2>/dev/null) || probe_exit=$?
+
+    if [[ $probe_exit -eq 0 && "$probe_result" == *"$expected_content"* ]]; then
+        echo "read-only" > "/tmp/.consult-sandbox-ok"
+        echo "Sandbox probe: read-only works (verified file read)." >&2
+        echo "read-only"
+    else
+        echo "danger-full-access" > "/tmp/.consult-sandbox-ok"
+        echo "Sandbox probe: read-only can't read files, using danger-full-access." >&2
+        echo "danger-full-access"
+    fi
 }
 
 # Build context block from --context file arguments.
@@ -110,6 +165,31 @@ build_context_block() {
     echo "$context_block"
 }
 
+# Check if Codex output indicates a sandbox failure (bwrap error).
+# Some responses come back "successfully" (exit 0) but contain only
+# error messages about sandbox failures instead of actual analysis.
+codex_output_is_sandbox_failure() {
+    local output="$1"
+    [[ "$output" == *"bwrap"* && "$output" == *"RTM_NEWADDR"* ]] ||
+    [[ "$output" == *"sandbox is rejecting"* ]] ||
+    [[ "$output" == *"Failed RTM_NEWADDR"* ]] ||
+    [[ "$output" == *"couldn't read"*"sandbox error"* ]]
+}
+
+# Check if Codex output indicates it couldn't actually do the work.
+# Codex sometimes returns exit 0 but admits it failed to read files.
+# Only matches explicit failure admissions — not short successful answers.
+codex_output_is_empty_response() {
+    local output="$1"
+    [[ "$output" == *"I can't give a faithful review"* ]] ||
+    [[ "$output" == *"I was unable to read"* ]] ||
+    [[ "$output" == *"I couldn't read"* ]] ||
+    [[ "$output" == *"I can't read"* ]] ||
+    [[ "$output" == *"paste the contents"* && "$output" == *"couldn't read"* ]] ||
+    [[ "$output" == *"sandbox is rejecting"* ]] ||
+    [[ "$output" == *"shell access is being blocked"* ]]
+}
+
 run_codex() {
     local prompt="$1"
     local outfile="${2:-${OUTPUT_DIR}/codex-${TIMESTAMP}.md}"
@@ -117,23 +197,48 @@ run_codex() {
 
     require_provider codex
 
-    echo "Consulting Codex (model: ${CODEX_MODEL}, timeout: ${TIMEOUT}s, read-only)..." >&2
+    # Detect best sandbox mode
+    local sandbox
+    sandbox=$(detect_codex_sandbox)
+
+    echo "Consulting Codex (model: ${CODEX_MODEL}, timeout: ${TIMEOUT}s, sandbox: ${sandbox})..." >&2
 
     local result exit_code=0
     result=$(printf '%s' "$prompt" | timeout "$TIMEOUT" \
-        codex exec --model "$CODEX_MODEL" --sandbox read-only 2>"$errlog" \
+        codex exec --model "$CODEX_MODEL" --sandbox "$sandbox" 2>"$errlog" \
         | filter_output) || exit_code=$?
+
+    # Check for sandbox failure or soft failure (exit 0 but couldn't read files).
+    # If sandbox isn't already danger-full-access, retry with it.
+    if [[ $exit_code -eq 0 && "$sandbox" != "danger-full-access" ]]; then
+        if codex_output_is_sandbox_failure "$result" || codex_output_is_empty_response "$result"; then
+            echo "Codex couldn't read files with sandbox '$sandbox'. Retrying with danger-full-access..." >&2
+            echo "danger-full-access" > "/tmp/.consult-sandbox-ok"
+            sandbox="danger-full-access"
+
+            exit_code=0
+            result=$(printf '%s' "$prompt" | timeout "$TIMEOUT" \
+                codex exec --model "$CODEX_MODEL" --sandbox "$sandbox" 2>"$errlog" \
+                | filter_output) || exit_code=$?
+        fi
+    fi
+
+    # After retry (or if already on danger-full-access), check for remaining failures
+    if [[ $exit_code -eq 0 ]] && codex_output_is_empty_response "$result"; then
+        echo "WARNING: Codex still couldn't complete the task after sandbox fallback." >&2
+        echo "Consider using --context to inline file contents." >&2
+    fi
 
     if [[ $exit_code -eq 0 && -n "$result" ]]; then
         echo "$result" > "$outfile"
         echo "Codex result saved to: ${outfile}" >&2
         echo "$result"
     elif [[ $exit_code -eq 124 ]]; then
-        echo "Codex stderr log saved to: ${errlog}" >&2
+        echo "Codex stderr log: ${errlog}" >&2
         die "Codex timed out after ${TIMEOUT}s"
     else
-        echo "Codex stderr log saved to: ${errlog}" >&2
-        die "Codex failed (exit code: ${exit_code})"
+        echo "Codex stderr log: ${errlog}" >&2
+        die "Codex failed (exit code: ${exit_code}). Check stderr log for details."
     fi
 }
 
@@ -156,11 +261,11 @@ run_gemini() {
         echo "Gemini result saved to: ${outfile}" >&2
         echo "$result"
     elif [[ $exit_code -eq 124 ]]; then
-        echo "Gemini stderr log saved to: ${errlog}" >&2
+        echo "Gemini stderr log: ${errlog}" >&2
         die "Gemini timed out after ${TIMEOUT}s"
     else
-        echo "Gemini stderr log saved to: ${errlog}" >&2
-        die "Gemini failed (exit code: ${exit_code})"
+        echo "Gemini stderr log: ${errlog}" >&2
+        die "Gemini failed (exit code: ${exit_code}). Check stderr log for details."
     fi
 }
 
@@ -169,7 +274,9 @@ show_availability() {
     if check_provider codex; then
         local ver
         ver=$(codex --version 2>/dev/null || echo 'unknown version')
-        echo "codex: available ($ver)"
+        local sandbox
+        sandbox=$(detect_codex_sandbox)
+        echo "codex: available ($ver, sandbox: $sandbox)"
         any_available=true
     else
         echo "codex: not installed"
@@ -210,6 +317,11 @@ while [[ $# -gt 0 ]]; do
         --timeout)
             [[ $# -ge 2 ]] || die "--timeout requires a number of seconds"
             TIMEOUT_OVERRIDE="$2"
+            shift 2
+            ;;
+        --sandbox)
+            [[ $# -ge 2 ]] || die "--sandbox requires a mode (read-only, danger-full-access, auto)"
+            CODEX_SANDBOX="$2"
             shift 2
             ;;
         --*)
@@ -289,6 +401,11 @@ case "$provider" in
         gemini_ok=false
         codex_pid=""
         gemini_pid=""
+
+        # For both mode, probe sandbox once before spawning (avoids double probe)
+        if $codex_available; then
+            detect_codex_sandbox > /dev/null
+        fi
 
         # Spawn available providers in parallel
         if $codex_available; then

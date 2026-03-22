@@ -52,10 +52,12 @@ digraph when_to_consult {
 
 External AI CLIs (Codex, Gemini) run locally and have the same filesystem access as Claude. They can read files, search code, and explore the project — you don't need to paste file contents into the prompt.
 
-**Codex CLI** runs in `read-only` sandbox mode for consultations:
+**Codex CLI** sandbox mode is auto-detected by `consult.sh`:
 ```
-codex exec --model <model> --sandbox read-only
+codex exec --model <model> --sandbox <auto-detected>
 ```
+
+The script probes whether `read-only` sandbox can actually read files (some Linux kernels block the bubblewrap namespace it requires). If the probe fails, it automatically falls back to `danger-full-access`. The probe result is cached for the session. Override with `--sandbox <mode>` or `CONSULT_CODEX_SANDBOX=<mode>`.
 
 **Gemini CLI** runs in `yolo` approval mode (auto-approves reads, can access files outside cwd):
 ```
@@ -268,6 +270,7 @@ Never make consultation mandatory. Always offer, let the user decide.
 | `--context <file[:start-end]>` | Include file contents inline (repeatable) |
 | `--model <model>` | Override model for this invocation |
 | `--timeout <seconds>` | Override timeout for this invocation |
+| `--sandbox <mode>` | Override Codex sandbox (read-only, danger-full-access, auto) |
 
 **Environment variables** (persistent defaults):
 
@@ -277,6 +280,7 @@ Never make consultation mandatory. Always offer, let the user decide.
 | `CONSULT_GEMINI_MODEL` | `gemini-3.1-pro-preview` | Gemini model to use |
 | `CONSULT_TIMEOUT` | `600` | Timeout in seconds per provider |
 | `CONSULT_OUTPUT_DIR` | `/tmp/consult-results` | Where result files are saved |
+| `CONSULT_CODEX_SANDBOX` | `auto` | Codex sandbox mode (auto, read-only, danger-full-access) |
 
 Results are saved to `$CONSULT_OUTPUT_DIR/codex-<timestamp>.md` and `gemini-<timestamp>.md` for reference.
 
