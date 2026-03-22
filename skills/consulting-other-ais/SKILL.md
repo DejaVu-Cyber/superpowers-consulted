@@ -256,6 +256,7 @@ This skill is a **tool**, not a phase gate. It integrates into existing review l
 
 - **brainstorming** spec review loop: Offer 3-way review (subagent + Codex + Gemini) as a single choice alongside subagent-only review
 - **writing-plans** plan review loop: Same 3-way review option for plan critique
+- **subagent-driven-development** final review: 3-way plan compliance review after all tasks complete — checks implementation against plan/spec
 - **finishing-a-development-branch**: Optional external review of branch diff before merge/PR
 - **systematic-debugging**: When stuck, offer fresh-eyes consultation
 

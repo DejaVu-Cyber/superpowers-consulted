@@ -60,7 +60,10 @@ digraph process {
 
     "Read plan, extract all tasks with full text, note context, create TodoWrite" [shape=box];
     "More tasks remain?" [shape=diamond];
+    "Offer final review: 3-way / subagent-only / skip" [shape=diamond];
+    "3-way review: Claude subagent + Codex + Gemini vs plan" [shape=box];
     "Dispatch final code reviewer subagent for entire implementation" [shape=box];
+    "Synthesize all review perspectives" [shape=box];
     "Use superpowers:finishing-a-development-branch" [shape=box style=filled fillcolor=lightgreen];
 
     "Read plan, extract all tasks with full text, note context, create TodoWrite" -> "Dispatch implementer subagent (./implementer-prompt.md)";
@@ -79,8 +82,13 @@ digraph process {
     "Code quality reviewer subagent approves?" -> "Mark task complete in TodoWrite" [label="yes"];
     "Mark task complete in TodoWrite" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
-    "More tasks remain?" -> "Dispatch final code reviewer subagent for entire implementation" [label="no"];
+    "More tasks remain?" -> "Offer final review: 3-way / subagent-only / skip" [label="no"];
+    "Offer final review: 3-way / subagent-only / skip" -> "3-way review: Claude subagent + Codex + Gemini vs plan" [label="3-way"];
+    "Offer final review: 3-way / subagent-only / skip" -> "Dispatch final code reviewer subagent for entire implementation" [label="subagent-only"];
+    "Offer final review: 3-way / subagent-only / skip" -> "Use superpowers:finishing-a-development-branch" [label="skip"];
+    "3-way review: Claude subagent + Codex + Gemini vs plan" -> "Synthesize all review perspectives";
     "Dispatch final code reviewer subagent for entire implementation" -> "Use superpowers:finishing-a-development-branch";
+    "Synthesize all review perspectives" -> "Use superpowers:finishing-a-development-branch";
 }
 ```
 
@@ -193,11 +201,110 @@ Code reviewer: ✅ Approved
 ...
 
 [After all tasks]
-[Dispatch final code-reviewer]
-Final reviewer: All requirements met, ready to merge
 
+You: All tasks complete. How would you like the final review?
+  1. 3-way review — Claude subagent + Codex + Gemini review against plan
+  2. Subagent only — Claude code reviewer
+  3. Skip final review
+
+User: 1
+
+[Claude subagent dispatched with full implementation range]
+[Codex + Gemini consulted in parallel with plan compliance prompt]
+
+Claude subagent: Clean architecture, all tests pass, minor naming nit
+Codex: All 5 plan tasks implemented. Task 3 spec says "retry 3 times" but code retries twice.
+Gemini: Plan says "log to structured JSON" but logging uses plain text in task 4.
+
+You: Two plan deviations found:
+  - Task 3: retry count is 2, plan says 3 → fix
+  - Task 4: plain text logging, plan says structured JSON → fix
+
+[Fix both, re-run tests]
 Done!
 ```
+
+## Final Review: Plan Compliance
+
+After all tasks are complete, offer a final review that checks the entire implementation against the original plan and spec. This catches cross-task issues and plan deviations that per-task reviews miss.
+
+### Offer the Review
+
+```
+All tasks complete. How would you like the final review?
+
+1. **3-way review** — Claude subagent reviews code quality while Codex + Gemini
+   review implementation against the plan (recommended for non-trivial plans)
+2. **Subagent only** — Claude code reviewer for the full implementation
+3. **Skip** — Proceed directly to finishing the branch
+
+Which option?
+```
+
+### Option 1: 3-Way Plan Compliance Review
+
+Run in parallel:
+
+**A. Claude subagent** — Standard final code review (existing behavior). Dispatch with `requesting-code-review/code-reviewer.md` template, using the BASE_SHA from before the first task and HEAD_SHA from after the last.
+
+**B. External AIs vs plan** — Use `consulting-other-ais` to send Codex and Gemini a plan compliance prompt. The prompt should include:
+
+- Path to the plan file
+- Path to the spec file (if separate)
+- The git diff range (base..HEAD) or instruct them to run `git diff <base>..<head>`
+- A focused compliance question
+
+**Plan compliance prompt template:**
+
+```
+Review this implementation against its plan and spec.
+
+Plan: [path/to/plan.md]
+Spec: [path/to/spec.md]
+Implementation diff: run `git diff <BASE_SHA>..<HEAD_SHA>`
+
+For each task in the plan, verify:
+1. Was it implemented? (yes/no/partial)
+2. Does it match the spec's requirements exactly?
+3. Any deviations — intentional simplifications, missing edge cases, or scope creep?
+
+Also check cross-cutting concerns:
+- Are all plan tasks accounted for?
+- Do the pieces integrate correctly?
+- Any spec requirements that no task covers?
+
+Be specific — reference plan task numbers, spec sections, and code file:line.
+Output a task-by-task compliance table, then list any issues.
+```
+
+**Synthesize** — Present all three perspectives with clear attribution:
+
+```
+**Claude subagent (code quality):**
+[summary — strengths, issues by severity, assessment]
+
+**Codex (plan compliance):**
+[task-by-task status, deviations found]
+
+**Gemini (plan compliance):**
+[task-by-task status, deviations found]
+
+**Synthesis:**
+- Agreed: [what all reviewers confirm is solid]
+- Plan deviations: [list with task numbers]
+- Code issues: [from Claude subagent]
+- Recommendation: [fix list before proceeding, or ready to go]
+```
+
+If deviations are found, fix them before proceeding to `finishing-a-development-branch`. Re-run tests after fixes.
+
+### Option 2: Subagent Only
+
+Dispatch the standard final code-reviewer subagent (existing behavior). Use the full implementation range (BASE_SHA from before first task to current HEAD).
+
+### Option 3: Skip
+
+Proceed directly to `finishing-a-development-branch`.
 
 ## Advantages
 
@@ -269,6 +376,9 @@ Done!
 - **superpowers:writing-plans** - Creates the plan this skill executes
 - **superpowers:requesting-code-review** - Code review template for reviewer subagents
 - **superpowers:finishing-a-development-branch** - Complete development after all tasks
+
+**Optional:**
+- **superpowers:consulting-other-ais** - External AI perspectives for 3-way final plan compliance review
 
 **Subagents should use:**
 - **superpowers:test-driven-development** - Subagents follow TDD for each task
