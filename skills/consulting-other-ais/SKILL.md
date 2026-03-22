@@ -103,11 +103,13 @@ This reports which providers are installed and their versions. Only offer provid
 
 ### 4. Run the Consultation
 
-Use the helper script from the plugin directory. Find it via the plugin install path:
+Use the helper script from the plugin directory. The script is at `skills/consulting-other-ais/scripts/consult.sh` relative to the plugin install path.
+
+**Find the install path** from `~/.claude/plugins/installed_plugins.json` — look for the `superpowers` entry's `installPath`. Then construct the full script path:
 
 ```bash
-# Find the script path (works regardless of install location)
-CONSULT_SCRIPT=$(find ~/.claude/plugins -path "*/consulting-other-ais/scripts/consult.sh" 2>/dev/null | head -1)
+# Read install path from plugin config (preferred — avoids stale cache copies)
+CONSULT_SCRIPT="<superpowers-installPath>/skills/consulting-other-ais/scripts/consult.sh"
 
 # Single provider
 "$CONSULT_SCRIPT" codex "Your focused prompt here"
@@ -272,6 +274,7 @@ Never make consultation mandatory. Always offer, let the user decide.
 | `--model <model>` | Override model for this invocation |
 | `--timeout <seconds>` | Override timeout for this invocation |
 | `--sandbox <mode>` | Override Codex sandbox (read-only, danger-full-access, auto) |
+| `--cwd <dir>` | Working directory for Codex (must be a trusted git repo; auto-detected from PWD) |
 
 **Environment variables** (persistent defaults):
 
@@ -282,6 +285,7 @@ Never make consultation mandatory. Always offer, let the user decide.
 | `CONSULT_TIMEOUT` | `600` | Timeout in seconds per provider |
 | `CONSULT_OUTPUT_DIR` | `/tmp/consult-results` | Where result files are saved |
 | `CONSULT_CODEX_SANDBOX` | `auto` | Codex sandbox mode (auto, read-only, danger-full-access) |
+| `CONSULT_CODEX_CWD` | (auto-detect) | Working directory for Codex (must be inside a trusted git repo) |
 
 Results are saved to `$CONSULT_OUTPUT_DIR/codex-<timestamp>.md` and `gemini-<timestamp>.md` for reference.
 

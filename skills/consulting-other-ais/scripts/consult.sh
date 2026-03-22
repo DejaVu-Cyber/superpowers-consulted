@@ -17,6 +17,8 @@
 #                                  Can be repeated. Example: --context src/auth.py:40-80
 #   --model <model>               Override the provider model for this invocation.
 #   --timeout <seconds>           Override the timeout for this invocation.
+#   --cwd <dir>                   Working directory for Codex (must be a trusted git repo).
+#                                  Auto-detected from PWD if not specified.
 #
 # Environment variables:
 #   CONSULT_CODEX_MODEL    - Codex model (default: gpt-5.4)
@@ -25,6 +27,7 @@
 #   CONSULT_OUTPUT_DIR     - Where to save results (default: /tmp/consult-results)
 #   CONSULT_CODEX_SANDBOX  - Codex sandbox mode (default: auto-detect)
 #                            Values: read-only, danger-full-access, auto
+#   CONSULT_CODEX_CWD      - Working directory for Codex (default: auto-detect nearest git root)
 
 set -euo pipefail
 
@@ -34,6 +37,7 @@ GEMINI_MODEL="${CONSULT_GEMINI_MODEL:-gemini-3.1-pro-preview}"
 TIMEOUT="${CONSULT_TIMEOUT:-600}"
 OUTPUT_DIR="${CONSULT_OUTPUT_DIR:-/tmp/consult-results}"
 CODEX_SANDBOX="${CONSULT_CODEX_SANDBOX:-auto}"
+CODEX_CWD="${CONSULT_CODEX_CWD:-}"  # Override working directory for Codex (must be inside a trusted git repo)
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
 # Preamble prepended to all prompts. Overrides plugin/skill workflows that
@@ -59,6 +63,30 @@ require_provider() {
     if ! check_provider "$provider"; then
         die "$provider CLI not found. Install it or check your PATH."
     fi
+}
+
+# Resolve the working directory for Codex CLI.
+# Codex requires being run inside a trusted git repository.
+# Priority: --cwd flag > CONSULT_CODEX_CWD env > nearest git root from PWD.
+resolve_codex_cwd() {
+    # Explicit override takes priority
+    if [[ -n "$CODEX_CWD" ]]; then
+        echo "$CODEX_CWD"
+        return
+    fi
+
+    # Try to find the nearest git root from current directory
+    local git_root
+    git_root=$(git rev-parse --show-toplevel 2>/dev/null) || true
+
+    if [[ -n "$git_root" ]]; then
+        echo "$git_root"
+        return
+    fi
+
+    # Not inside a git repo — return PWD and let Codex fail
+    # (the error will be caught by failure detection and reported clearly)
+    echo "$PWD"
 }
 
 # Filter CLI boilerplate from output.
@@ -124,8 +152,11 @@ detect_codex_sandbox() {
         return
     fi
 
+    local codex_dir
+    codex_dir=$(resolve_codex_cwd)
+
     local probe_result probe_exit=0
-    probe_result=$(printf '%s' "Read the file $probe_file and reply with ONLY its contents, nothing else." | timeout 45 \
+    probe_result=$(cd "$codex_dir" && printf '%s' "Read the file $probe_file and reply with ONLY its contents, nothing else." | timeout 45 \
         codex exec --model "$CODEX_MODEL" --sandbox read-only --ephemeral 2>/dev/null) || probe_exit=$?
 
     if [[ $probe_exit -eq 0 && "$probe_result" == *"$expected_content"* ]]; then
@@ -173,7 +204,8 @@ codex_output_is_sandbox_failure() {
     [[ "$output" == *"bwrap"* && "$output" == *"RTM_NEWADDR"* ]] ||
     [[ "$output" == *"sandbox is rejecting"* ]] ||
     [[ "$output" == *"Failed RTM_NEWADDR"* ]] ||
-    [[ "$output" == *"couldn't read"*"sandbox error"* ]]
+    [[ "$output" == *"couldn't read"*"sandbox error"* ]] ||
+    [[ "$output" == *"Not inside a trusted directory"* ]]
 }
 
 # Check if Codex output indicates it couldn't actually do the work.
@@ -201,10 +233,14 @@ run_codex() {
     local sandbox
     sandbox=$(detect_codex_sandbox)
 
-    echo "Consulting Codex (model: ${CODEX_MODEL}, timeout: ${TIMEOUT}s, sandbox: ${sandbox})..." >&2
+    # Codex must run inside a trusted git repo
+    local codex_dir
+    codex_dir=$(resolve_codex_cwd)
+
+    echo "Consulting Codex (model: ${CODEX_MODEL}, timeout: ${TIMEOUT}s, sandbox: ${sandbox}, cwd: ${codex_dir})..." >&2
 
     local result exit_code=0
-    result=$(printf '%s' "$prompt" | timeout "$TIMEOUT" \
+    result=$(cd "$codex_dir" && printf '%s' "$prompt" | timeout "$TIMEOUT" \
         codex exec --model "$CODEX_MODEL" --sandbox "$sandbox" 2>"$errlog" \
         | filter_output) || exit_code=$?
 
@@ -217,7 +253,7 @@ run_codex() {
             sandbox="danger-full-access"
 
             exit_code=0
-            result=$(printf '%s' "$prompt" | timeout "$TIMEOUT" \
+            result=$(cd "$codex_dir" && printf '%s' "$prompt" | timeout "$TIMEOUT" \
                 codex exec --model "$CODEX_MODEL" --sandbox "$sandbox" 2>"$errlog" \
                 | filter_output) || exit_code=$?
         fi
@@ -322,6 +358,11 @@ while [[ $# -gt 0 ]]; do
         --sandbox)
             [[ $# -ge 2 ]] || die "--sandbox requires a mode (read-only, danger-full-access, auto)"
             CODEX_SANDBOX="$2"
+            shift 2
+            ;;
+        --cwd)
+            [[ $# -ge 2 ]] || die "--cwd requires a directory path"
+            CODEX_CWD="$2"
             shift 2
             ;;
         --*)
