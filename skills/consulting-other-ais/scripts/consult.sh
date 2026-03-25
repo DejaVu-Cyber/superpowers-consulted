@@ -65,28 +65,30 @@ require_provider() {
     fi
 }
 
-# Resolve the working directory for Codex CLI.
-# Codex requires being run inside a trusted git repository.
-# Priority: --cwd flag > CONSULT_CODEX_CWD env > nearest git root from PWD.
-resolve_codex_cwd() {
+# Build extra Codex CLI flags for working directory / git repo handling.
+# Codex requires running inside a trusted git repo. We use:
+#   --cd <DIR>               when we can find a git root
+#   --skip-git-repo-check    when we can't (lets Codex run anywhere)
+#
+# Priority: --cwd flag > CONSULT_CODEX_CWD env > nearest git root from PWD > skip check.
+# Returns the flags as a string (may be empty, one flag, or two).
+codex_repo_flags() {
+    local target=""
+
     # Explicit override takes priority
     if [[ -n "$CODEX_CWD" ]]; then
-        echo "$CODEX_CWD"
-        return
+        target="$CODEX_CWD"
+    else
+        # Try to find the nearest git root from current directory
+        target=$(git rev-parse --show-toplevel 2>/dev/null) || true
     fi
 
-    # Try to find the nearest git root from current directory
-    local git_root
-    git_root=$(git rev-parse --show-toplevel 2>/dev/null) || true
-
-    if [[ -n "$git_root" ]]; then
-        echo "$git_root"
-        return
+    if [[ -n "$target" && -d "$target/.git" ]]; then
+        echo "--cd $target"
+    else
+        # No git repo found — skip the check so Codex doesn't refuse to run
+        echo "--skip-git-repo-check"
     fi
-
-    # Not inside a git repo — return PWD and let Codex fail
-    # (the error will be caught by failure detection and reported clearly)
-    echo "$PWD"
 }
 
 # Filter CLI boilerplate from output.
@@ -152,12 +154,12 @@ detect_codex_sandbox() {
         return
     fi
 
-    local codex_dir
-    codex_dir=$(resolve_codex_cwd)
+    local repo_flags
+    repo_flags=$(codex_repo_flags)
 
     local probe_result probe_exit=0
-    probe_result=$(cd "$codex_dir" && printf '%s' "Read the file $probe_file and reply with ONLY its contents, nothing else." | timeout 45 \
-        codex exec --model "$CODEX_MODEL" --sandbox read-only --ephemeral 2>/dev/null) || probe_exit=$?
+    probe_result=$(printf '%s' "Read the file $probe_file and reply with ONLY its contents, nothing else." | timeout 45 \
+        codex exec --model "$CODEX_MODEL" --sandbox read-only --ephemeral $repo_flags 2>/dev/null) || probe_exit=$?
 
     if [[ $probe_exit -eq 0 && "$probe_result" == *"$expected_content"* ]]; then
         echo "read-only" > "/tmp/.consult-sandbox-ok"
@@ -233,15 +235,15 @@ run_codex() {
     local sandbox
     sandbox=$(detect_codex_sandbox)
 
-    # Codex must run inside a trusted git repo
-    local codex_dir
-    codex_dir=$(resolve_codex_cwd)
+    # Codex must run inside a trusted git repo — use --cd or --skip-git-repo-check
+    local repo_flags
+    repo_flags=$(codex_repo_flags)
 
-    echo "Consulting Codex (model: ${CODEX_MODEL}, timeout: ${TIMEOUT}s, sandbox: ${sandbox}, cwd: ${codex_dir})..." >&2
+    echo "Consulting Codex (model: ${CODEX_MODEL}, timeout: ${TIMEOUT}s, sandbox: ${sandbox}, flags: ${repo_flags})..." >&2
 
     local result exit_code=0
-    result=$(cd "$codex_dir" && printf '%s' "$prompt" | timeout "$TIMEOUT" \
-        codex exec --model "$CODEX_MODEL" --sandbox "$sandbox" 2>"$errlog" \
+    result=$(printf '%s' "$prompt" | timeout "$TIMEOUT" \
+        codex exec --model "$CODEX_MODEL" --sandbox "$sandbox" $repo_flags 2>"$errlog" \
         | filter_output) || exit_code=$?
 
     # Check for sandbox failure or soft failure (exit 0 but couldn't read files).
@@ -253,8 +255,8 @@ run_codex() {
             sandbox="danger-full-access"
 
             exit_code=0
-            result=$(cd "$codex_dir" && printf '%s' "$prompt" | timeout "$TIMEOUT" \
-                codex exec --model "$CODEX_MODEL" --sandbox "$sandbox" 2>"$errlog" \
+            result=$(printf '%s' "$prompt" | timeout "$TIMEOUT" \
+                codex exec --model "$CODEX_MODEL" --sandbox "$sandbox" $repo_flags 2>"$errlog" \
                 | filter_output) || exit_code=$?
         fi
     fi

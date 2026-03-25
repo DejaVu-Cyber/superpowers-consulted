@@ -1,6 +1,6 @@
 {
   "name": "superpowers-consulted",
-  "version": "5.0.15",
+  "version": "5.0.16",
   "type": "module",
   "main": ".opencode/plugins/superpowers.js"
 }
