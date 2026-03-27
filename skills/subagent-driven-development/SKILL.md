@@ -125,6 +125,20 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 **Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
 
+## Linear Ticket Tracking
+
+When this skill is invoked from the `decompose-to-tickets` local execution path, Linear tickets exist for each task. After each task is marked complete (both reviews passed):
+
+1. Find the corresponding Linear ticket (match by task title or ticket identifier from the plan)
+2. Move the ticket to "Done" state using Linear MCP tools, the `linear` skill, or `curl` with `$LINEAR_API_KEY`
+3. Post a brief completion comment to the ticket referencing the commit or PR
+
+This keeps Linear in sync without making it the source of truth for implementation. The plan/spec files remain the implementation source — Linear is the tracking layer.
+
+**If Linear is unavailable** (API error, missing key, network issues), log a warning and continue execution. Ticket closure is tracking, not a gate — never block implementation progress on a Linear API failure.
+
+**If invoked directly from a plan** (without decompose-to-tickets in the chain), skip this section entirely — there are no Linear tickets to close.
+
 ## Prompt Templates
 
 - `./implementer-prompt.md` - Dispatch implementer subagent

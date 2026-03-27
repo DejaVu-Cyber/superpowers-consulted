@@ -10,7 +10,7 @@ Help turn ideas into fully formed designs and specs through natural collaborativ
 Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
 
 <HARD-GATE>
-Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
+Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity. The only valid terminal transitions from brainstorming are `writing-plans` (complex designs needing an implementation plan) and `decompose-to-tickets` (simpler designs that can go straight to tickets). Neither is an implementation skill — both are planning/decomposition skills.
 </HARD-GATE>
 
 ## Anti-Pattern: "This Is Too Simple To Need A Design"
@@ -26,11 +26,12 @@ You MUST create a task for each of these items and complete them in order:
 3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria. After 2-3 exchanges when you have enough context to describe the problem, offer to enrich the question pool with external AI perspectives (see "Multi-Perspective Questions" below).
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
 5. **Present design** — in sections scaled to their complexity, get user approval after each section
-6. **External design challenge (one round)** — after user approves the design, offer to send it to external AIs for pushback before writing it up. One round only. See "Design Challenge Round" below.
+6. **Role-based design challenge (one round)** — after user approves the design, offer to run a role-based-review for pushback before writing it up. One round only. See "Design Challenge Round" below.
 7. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
-8. **Spec review loop** — offer a 3-way review: dispatch spec-document-reviewer subagent alongside external AI providers (Codex/Gemini) via consulting-other-ais skill. See "Spec Review Loop" section below for the combined review flow.
+8. **Spec review loop** — offer role-based review or subagent-only review of the written spec. See "Spec Review Loop" section below.
 9. **User reviews written spec** — ask user to review the spec file before proceeding
-10. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+10. **Complexity assessment** — evaluate whether a plan is needed before implementation. See "Complexity Assessment" below.
+11. **Transition to implementation** — invoke `writing-plans` (complex) or `decompose-to-tickets` (simple)
 
 ## Process Flow
 
@@ -46,16 +47,18 @@ digraph brainstorming {
     "Propose 2-3 approaches" [shape=box];
     "Present design sections" [shape=box];
     "User approves design?" [shape=diamond];
-    "Design challenge?\n(external AIs)" [shape=diamond];
-    "External pushback\n(one round)" [shape=box];
+    "Design challenge?\n(role-based-review)" [shape=diamond];
+    "Role-based pushback\n(one round)" [shape=box];
     "User addresses\npushback" [shape=box];
     "Write design doc" [shape=box];
-    "3-way review:\nsubagent + external AIs?" [shape=diamond];
-    "Run combined review\n(subagent + Codex/Gemini)" [shape=box];
+    "Review method?" [shape=diamond];
+    "Run role-based review\n+ subagent" [shape=box];
     "Run subagent review only" [shape=box];
     "Review passed?" [shape=diamond];
     "User reviews spec?" [shape=diamond];
+    "Complexity assessment" [shape=diamond];
     "Invoke writing-plans skill" [shape=doublecircle];
+    "Invoke decompose-to-tickets skill" [shape=doublecircle];
 
     "Explore project context" -> "Visual questions ahead?";
     "Visual questions ahead?" -> "Offer Visual Companion\n(own message, no other content)" [label="yes"];
@@ -69,24 +72,27 @@ digraph brainstorming {
     "Propose 2-3 approaches" -> "Present design sections";
     "Present design sections" -> "User approves design?";
     "User approves design?" -> "Present design sections" [label="no, revise"];
-    "User approves design?" -> "Design challenge?\n(external AIs)" [label="yes"];
-    "Design challenge?\n(external AIs)" -> "External pushback\n(one round)" [label="yes"];
-    "Design challenge?\n(external AIs)" -> "Write design doc" [label="skip"];
-    "External pushback\n(one round)" -> "User addresses\npushback";
+    "User approves design?" -> "Design challenge?\n(role-based-review)" [label="yes"];
+    "Design challenge?\n(role-based-review)" -> "Role-based pushback\n(one round)" [label="yes"];
+    "Design challenge?\n(role-based-review)" -> "Write design doc" [label="skip"];
+    "Role-based pushback\n(one round)" -> "User addresses\npushback";
     "User addresses\npushback" -> "Write design doc";
-    "Write design doc" -> "3-way review:\nsubagent + external AIs?";
-    "3-way review:\nsubagent + external AIs?" -> "Run combined review\n(subagent + Codex/Gemini)" [label="3-way"];
-    "3-way review:\nsubagent + external AIs?" -> "Run subagent review only" [label="subagent only"];
-    "Run combined review\n(subagent + Codex/Gemini)" -> "Review passed?";
+    "Write design doc" -> "Review method?";
+    "Review method?" -> "Run role-based review\n+ subagent" [label="role-based"];
+    "Review method?" -> "Run subagent review only" [label="subagent only"];
+    "Review method?" -> "User reviews spec?" [label="skip review"];
+    "Run role-based review\n+ subagent" -> "Review passed?";
     "Run subagent review only" -> "Review passed?";
     "Review passed?" -> "Write design doc" [label="issues found,\nfix and re-review"];
     "Review passed?" -> "User reviews spec?" [label="approved"];
     "User reviews spec?" -> "Write design doc" [label="changes requested"];
-    "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
+    "User reviews spec?" -> "Complexity assessment" [label="approved"];
+    "Complexity assessment" -> "Invoke writing-plans skill" [label="complex:\nneeds plan"];
+    "Complexity assessment" -> "Invoke decompose-to-tickets skill" [label="simple:\nstraight to tickets"];
 }
 ```
 
-**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+**The terminal states are `writing-plans` or `decompose-to-tickets`.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skills you invoke after brainstorming are `writing-plans` (when complexity warrants a plan) or `decompose-to-tickets` (when going straight to tickets).
 
 ## The Process
 
@@ -156,41 +162,28 @@ Continue asking one at a time through the merged pool. Don't ask questions that 
 
 ## Design Challenge Round (optional, one round)
 
-After the user approves the design but before writing it up, offer one round of external pushback:
+After the user approves the design but before writing it up, offer one round of role-based pushback:
 
-> "Design looks good to me too. Before I write it up, want me to send it to Codex and Gemini for a challenge round? They'll push back on assumptions, flag risks, and suggest alternatives we might have missed. One round — then we decide what to adjust."
+> "Design looks good to me too. Before I write it up, want me to run a role-based review for a challenge round? Multiple AI perspectives will push back on assumptions, flag risks, and suggest alternatives we might have missed. One round — then we decide what to adjust."
 >
 > [Yes / No, write it up]
 
-If yes, send a summary of the approved design (not the full conversation — just the design as presented) to external AIs:
+If yes, select roles based on the type of work being designed:
 
-```
-We've designed [brief description]. Here's the design:
+| Work Type | Suggested Roles |
+|-----------|----------------|
+| New user-facing feature | product, architecture, QA, UX |
+| API/backend work | product, architecture, QA |
+| Pure refactor/infrastructure | architecture, QA |
+| Bug fix | QA (+ architecture if systemic) |
 
-[Design summary — architecture, components, data flow, key decisions]
+Present the suggestion to the user:
 
-Challenge this design:
-1. What assumptions might be wrong?
-2. What risks or failure modes are we not accounting for?
-3. Is there a simpler way to achieve the same goals?
-4. What would you do differently and why?
+> "Given this is [work type], I'd suggest reviewing through **[roles]** lenses. Want to add or skip any?"
 
-Be specific and constructive. Push back where it matters, not on style preferences.
-```
+After the user confirms roles, invoke `role-based-review` with the approved design summary as the artifact and the confirmed roles. Present the synthesized findings with role attribution (role-based-review handles the synthesis format).
 
-Present the challenges with attribution:
-
-> **Codex challenges:**
-> - [specific pushback]
->
-> **Gemini challenges:**
-> - [specific pushback]
->
-> **My take:** [which challenges have merit, which are noise]
->
-> Want to adjust anything before I write up the spec?
-
-The user decides which pushback items (if any) to incorporate. Then proceed to writing the design doc. **This is one round only** — do not re-consult after adjustments.
+The user decides which feedback items (if any) to incorporate. Then proceed to writing the design doc. **This is one round only** — do not re-invoke role-based-review after adjustments.
 
 ## After the Design
 
@@ -202,15 +195,15 @@ The user decides which pushback items (if any) to incorporate. Then proceed to w
 - Commit the design document to git
 
 **Spec Review Loop:**
-After writing the spec document, offer a combined review:
+After writing the spec document, offer a review:
 
 > "Spec written. How would you like it reviewed?"
 >
-> 1. **3-way review** — subagent + Codex + Gemini (recommended for non-trivial designs)
+> 1. **Role-based review** — dispatch spec-document-reviewer subagent alongside `role-based-review` with QA + architecture lenses (recommended for non-trivial designs)
 > 2. **Subagent only** — standard spec-document-reviewer
 > 3. **Skip review** — go straight to user review
 
-**If 3-way review:** Run the spec-document-reviewer subagent and external AI consultations in parallel. The subagent uses the spec-document-reviewer-prompt.md template. External AIs get the spec file path and a design review prompt via consulting-other-ais. Synthesize all findings into a single list of issues, noting which reviewer raised each one.
+**If role-based review:** Run the spec-document-reviewer subagent and `role-based-review` (with QA and architecture roles) in parallel. The subagent uses the spec-document-reviewer-prompt.md template. Synthesize all findings into a single list of issues, noting which reviewer raised each one.
 
 **If subagent only:** Dispatch spec-document-reviewer subagent as usual (see spec-document-reviewer-prompt.md).
 
@@ -225,10 +218,28 @@ After the spec review loop passes, ask the user to review the written spec befor
 
 Wait for the user's response. If they request changes, make them and re-run the spec review loop. Only proceed once the user approves.
 
-**Implementation:**
+**Complexity Assessment:**
 
-- Invoke the writing-plans skill to create a detailed implementation plan
-- Do NOT invoke any other skill. writing-plans is the next step.
+After the user approves the spec, assess whether a plan is needed before transitioning. Evaluate:
+
+- Cross-file architectural decisions that need locking down?
+- Unclear interfaces between components?
+- Deep dependency chains?
+- Migration or data-model risk?
+- Unresolved implementation decisions?
+
+Present the assessment:
+
+> "This involves [reason]. I'd recommend [writing a plan first / going straight to tickets]. What do you think?"
+
+The user decides the path. If they disagree with your recommendation, go with their preference.
+
+**Transition to Implementation:**
+
+- If plan needed → invoke `writing-plans` to create a detailed implementation plan
+- If no plan needed → invoke `decompose-to-tickets` directly with the spec file path
+
+These are the only two valid terminal transitions from brainstorming.
 
 ## Key Principles
 

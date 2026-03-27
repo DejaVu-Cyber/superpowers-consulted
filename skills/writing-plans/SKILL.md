@@ -161,15 +161,10 @@ After writing the complete plan, offer a combined review:
 
 After saving the plan:
 
-**"Plan complete and saved to `docs/superpowers/plans/<filename>.md`. Ready to execute?"**
+**"Plan complete and saved to `docs/superpowers/plans/<filename>.md`. Ready to decompose into tickets?"**
 
-**Execution path depends on harness capabilities:**
+Invoke `superpowers:decompose-to-tickets` with:
+- The spec file path (from the brainstorming phase)
+- The plan file path (just written)
 
-**If harness has subagents (Claude Code, etc.):**
-- **REQUIRED:** Use superpowers:subagent-driven-development
-- Do NOT offer a choice - subagent-driven is the standard approach
-- Fresh subagent per task + two-stage review
-
-**If harness does NOT have subagents:**
-- Execute plan in current session using superpowers:executing-plans
-- Batch execution with checkpoints for review
+The decompose-to-tickets skill handles ticket creation, Linear integration, and execution path selection. Do NOT invoke subagent-driven-development or executing-plans directly — decompose-to-tickets makes that decision.
