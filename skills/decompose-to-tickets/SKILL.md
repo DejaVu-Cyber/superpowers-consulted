@@ -111,7 +111,7 @@ This graph drives both Symphony dispatch order and local subagent sequencing.
 QA review is mandatory. Do NOT skip it. Do NOT present it as a choice. Invoke it before proceeding.
 </HARD-GATE>
 
-Invoke `role-based-review` with `roles: [qa]` on the full ticket set. QA verifies:
+Write the generated tickets to a temporary file (e.g., `docs/superpowers/tmp/tickets-<topic>.md`) so external providers can read them. Then invoke `role-based-review` with `roles: [qa]` on that file. QA verifies:
 
 - Every acceptance criterion is autonomously verifiable (can an agent run a command and check?)
 - No gaps between spec requirements and ticket coverage

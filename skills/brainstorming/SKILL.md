@@ -181,7 +181,7 @@ Present the suggestion to the user:
 
 > "Given this is [work type], I'd suggest reviewing through **[roles]** lenses. Want to add or skip any?"
 
-After the user confirms roles, invoke `role-based-review` with the approved design summary as the artifact and the confirmed roles. Present the synthesized findings with role attribution (role-based-review handles the synthesis format).
+After the user confirms roles, write a concise design summary to a temporary file (e.g., `docs/superpowers/tmp/design-challenge-<topic>.md`) so external providers can read it. Then invoke `role-based-review` with that file as the artifact and the confirmed roles. Present the synthesized findings with role attribution (role-based-review handles the synthesis format).
 
 The user decides which feedback items (if any) to incorporate. Then proceed to writing the design doc. **This is one round only** — do not re-invoke role-based-review after adjustments.
 
@@ -214,7 +214,7 @@ After writing the spec document, offer a review:
 **User Review Gate:**
 After the spec review loop passes, ask the user to review the written spec before proceeding:
 
-> "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
+> "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we move forward."
 
 Wait for the user's response. If they request changes, make them and re-run the spec review loop. Only proceed once the user approves.
 

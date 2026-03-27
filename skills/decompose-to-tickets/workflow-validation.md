@@ -4,7 +4,7 @@ This document defines how to verify that a project's `SYMPHONY-WORKFLOW.md` is c
 
 ## Verification Checklist
 
-All 6 checks must pass before ticket creation proceeds.
+All 6 checks must pass before Symphony handoff proceeds. Run this validation after tickets are created in Linear, when the user chooses the Symphony execution path.
 
 ### 1. SYMPHONY-WORKFLOW.md exists
 

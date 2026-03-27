@@ -51,7 +51,7 @@ A task should NOT be a single TDD micro-step like "write the failing test" or "r
 ```markdown
 # [Feature Name] Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED: Use superpowers:decompose-to-tickets to create Linear tickets from this plan, then choose local (subagent-driven-development) or Symphony execution. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** [One sentence describing what this builds]
 
