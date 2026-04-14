@@ -5,7 +5,7 @@ description: Use when executing implementation plans with independent tasks in t
 
 # Subagent-Driven Development
 
-Execute plan by dispatching fresh subagent per task, with two-stage review after each: spec compliance review first, then code quality review.
+Execute plan by dispatching fresh subagent per task, with two-stage review after each: spec compliance review first (Codex for an independent second opinion, Claude subagent fallback), then code quality review.
 
 **Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
@@ -49,8 +49,8 @@ digraph process {
         "Implementer subagent asks questions?" [shape=diamond];
         "Answer questions, provide context" [shape=box];
         "Implementer subagent implements, tests, commits, self-reviews" [shape=box];
-        "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" [shape=box];
-        "Spec reviewer subagent confirms code matches spec?" [shape=diamond];
+        "Run spec reviewer (Codex if available, Claude subagent fallback — ./spec-reviewer-prompt.md)" [shape=box];
+        "Spec reviewer confirms code matches spec?" [shape=diamond];
         "Implementer subagent fixes spec gaps" [shape=box];
         "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [shape=box];
         "Code quality reviewer subagent approves?" [shape=diamond];
@@ -71,11 +71,11 @@ digraph process {
     "Implementer subagent asks questions?" -> "Answer questions, provide context" [label="yes"];
     "Answer questions, provide context" -> "Dispatch implementer subagent (./implementer-prompt.md)";
     "Implementer subagent asks questions?" -> "Implementer subagent implements, tests, commits, self-reviews" [label="no"];
-    "Implementer subagent implements, tests, commits, self-reviews" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)";
-    "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" -> "Spec reviewer subagent confirms code matches spec?";
-    "Spec reviewer subagent confirms code matches spec?" -> "Implementer subagent fixes spec gaps" [label="no"];
-    "Implementer subagent fixes spec gaps" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" [label="re-review"];
-    "Spec reviewer subagent confirms code matches spec?" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="yes"];
+    "Implementer subagent implements, tests, commits, self-reviews" -> "Run spec reviewer (Codex if available, Claude subagent fallback — ./spec-reviewer-prompt.md)";
+    "Run spec reviewer (Codex if available, Claude subagent fallback — ./spec-reviewer-prompt.md)" -> "Spec reviewer confirms code matches spec?";
+    "Spec reviewer confirms code matches spec?" -> "Implementer subagent fixes spec gaps" [label="no"];
+    "Implementer subagent fixes spec gaps" -> "Run spec reviewer (Codex if available, Claude subagent fallback — ./spec-reviewer-prompt.md)" [label="re-review with prior findings + new SHA"];
+    "Spec reviewer confirms code matches spec?" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="yes"];
     "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" -> "Code quality reviewer subagent approves?";
     "Code quality reviewer subagent approves?" -> "Implementer subagent fixes quality issues" [label="no"];
     "Implementer subagent fixes quality issues" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="re-review"];
@@ -125,6 +125,36 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 **Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
 
+## Spec Compliance Review (Per Task)
+
+Spec review runs as a stateless, one-shot review against the current HEAD of the implementer's work. Codex is preferred for an independent second opinion outside the main session's context; Claude subagent is the fallback.
+
+**Provider selection (once per run):**
+
+1. At skill start, run `skills/consulting-other-ais/scripts/consult.sh check`
+2. If Codex is available → use Codex path for all per-task spec reviews
+3. If not → use Claude subagent path
+
+Cache the choice. Don't re-probe per task.
+
+**Review round (same for both providers):**
+
+Invoke with the prompt in `./spec-reviewer-prompt.md`, substituting:
+- Task requirement text
+- Implementer's report
+- BASE_SHA (before implementer started) and HEAD_SHA (current)
+- Prior findings — `(none — first review)` initially, or previous round's issue list on re-review
+
+The reviewer reads code from the repo directly. Don't paste file contents.
+
+**Re-review after implementer fix:**
+
+Stateless — start a fresh provider call. Pass the *same* task text, the *new* HEAD_SHA, and the *previous round's findings* as `PRIOR_FINDINGS` so the reviewer verifies each item was resolved, not just that the code compiles.
+
+Loop until reviewer returns ✅, then proceed to code quality review.
+
+**Fallback mid-run:** if a Codex call returns soft-failure language despite `consult.sh`'s auto-retry, switch to Claude subagent for the rest of the run.
+
 ## Linear Ticket Tracking
 
 When this skill is invoked from the `decompose-to-tickets` local execution path, Linear tickets exist for each task. After each task is marked complete (both reviews passed):
@@ -170,7 +200,7 @@ Implementer: "Got it. Implementing now..."
   - Self-review: Found I missed --force flag, added it
   - Committed
 
-[Dispatch spec compliance reviewer]
+[Run spec compliance review via Codex (or Claude subagent if Codex unavailable)]
 Spec reviewer: ✅ Spec compliant - all requirements met, nothing extra
 
 [Get git SHAs, dispatch code quality reviewer]
@@ -190,7 +220,7 @@ Implementer:
   - Self-review: All good
   - Committed
 
-[Dispatch spec compliance reviewer]
+[Run spec compliance review via Codex]
 Spec reviewer: ❌ Issues:
   - Missing: Progress reporting (spec says "report every 100 items")
   - Extra: Added --json flag (not requested)
@@ -198,8 +228,8 @@ Spec reviewer: ❌ Issues:
 [Implementer fixes issues]
 Implementer: Removed --json flag, added progress reporting
 
-[Spec reviewer reviews again]
-Spec reviewer: ✅ Spec compliant now
+[Re-review via Codex — new HEAD_SHA + prior findings passed in]
+Spec reviewer: ✅ Spec compliant now — both prior findings RESOLVED
 
 [Dispatch code quality reviewer]
 Code reviewer: Strengths: Solid. Issues (Important): Magic number (100)
@@ -392,7 +422,7 @@ Proceed directly to `finishing-a-development-branch`.
 - **superpowers:finishing-a-development-branch** - Complete development after all tasks
 
 **Optional:**
-- **superpowers:consulting-other-ais** - External AI perspectives for 3-way final plan compliance review
+- **superpowers:consulting-other-ais** - Codex for per-task spec compliance review (falls back to Claude subagent when unavailable) and external AI perspectives for 3-way final plan compliance review
 
 **Subagents should use:**
 - **superpowers:test-driven-development** - Subagents follow TDD for each task
