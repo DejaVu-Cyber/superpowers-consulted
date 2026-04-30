@@ -30,9 +30,8 @@ digraph decompose {
     "Decompose spec into\nimplementable units" [shape=box];
     "Generate tickets\n(batch if 8+)" [shape=box];
     "Map dependency graph" [shape=box];
-    "QA review via\nrole-based-review" [shape=box];
-    "QA passed?" [shape=diamond];
-    "Fix issues" [shape=box];
+    "Single multi-AI critique\n(consult.sh both)" [shape=box];
+    "Apply obvious fixes\n(no re-critique)" [shape=box];
     "Get Linear project context" [shape=box];
     "Create tickets in Linear\n(Planned state)" [shape=box];
     "User reviews in Linear" [shape=box];
@@ -49,11 +48,9 @@ digraph decompose {
     "Extract tasks from plan\n(mechanical mapping)" -> "Generate tickets\n(batch if 8+)";
     "Decompose spec into\nimplementable units" -> "Generate tickets\n(batch if 8+)";
     "Generate tickets\n(batch if 8+)" -> "Map dependency graph";
-    "Map dependency graph" -> "QA review via\nrole-based-review";
-    "QA review via\nrole-based-review" -> "QA passed?";
-    "QA passed?" -> "Fix issues" [label="no"];
-    "Fix issues" -> "QA review via\nrole-based-review" [label="re-review"];
-    "QA passed?" -> "Get Linear project context" [label="yes"];
+    "Map dependency graph" -> "Single multi-AI critique\n(consult.sh both)";
+    "Single multi-AI critique\n(consult.sh both)" -> "Apply obvious fixes\n(no re-critique)";
+    "Apply obvious fixes\n(no re-critique)" -> "Get Linear project context";
     "Get Linear project context" -> "Create tickets in Linear\n(Planned state)";
     "Create tickets in Linear\n(Planned state)" -> "User reviews in Linear";
     "User reviews in Linear" -> "User changed tickets?";
@@ -105,20 +102,35 @@ Parallel groups: [1] -> [2, 3] -> [4]
 
 This graph drives both Symphony dispatch order and local subagent sequencing.
 
-## Step 4: Mandatory QA Review
+## Step 4: Single Multi-AI Critique
 
-<HARD-GATE>
-QA review is mandatory. Do NOT skip it. Do NOT present it as a choice. Invoke it before proceeding.
-</HARD-GATE>
+One round of external AI critique. No re-review loop — apply obvious fixes and proceed. The user reviews tickets in Linear at Step 7, which is the human gate.
 
-Write the generated tickets to a temporary file (e.g., `docs/superpowers/tmp/tickets-<topic>.md`) so external providers can read them. Then invoke `role-based-review` with `roles: [qa]` on that file. QA verifies:
+Write the generated tickets to a temporary file (e.g., `docs/superpowers/tmp/tickets-<topic>.md`) so external providers can read them. Then call `consult.sh both` with a focused critique prompt:
 
-- Every acceptance criterion is autonomously verifiable (can an agent run a command and check?)
-- No gaps between spec requirements and ticket coverage
-- Dependencies are correct and complete
-- Testing commands are concrete and executable
+```bash
+"$CONSULT_SCRIPT" both "$(cat <<EOF
+Critique this ticket set at <ABSOLUTE_PATH_TO_TICKETS_FILE>.
 
-Fix any issues QA raises. Re-run QA review until it passes. If the loop exceeds 3 iterations, surface to the user for guidance.
+Source spec: <ABSOLUTE_PATH_TO_SPEC>
+Source plan (if any): <ABSOLUTE_PATH_TO_PLAN>
+
+Focus on:
+1. Acceptance criteria — are they autonomously verifiable? An agent must be able to confirm completion by running a command and checking the result.
+2. Coverage — any spec requirements not covered by a ticket?
+3. Dependencies — are blocking relationships correct and complete?
+4. Testing commands — concrete and executable, not aspirational?
+
+Be specific — reference ticket numbers and section names. Keep it under 400 words.
+EOF
+)"
+```
+
+Synthesize Codex + Gemini findings. Apply obvious fixes silently (e.g. tightening a vague acceptance criterion, adding a missing dependency edge, replacing "test it works" with a concrete command). For non-obvious tensions, leave them and note them for the user at Step 7.
+
+If `consult.sh check` shows neither provider available, **skip this step** with a one-line note. Do not block on it.
+
+**Do not loop.** This is a single round. The Linear review at Step 7 is the human gate; trust it to catch what the critique missed.
 
 ## Step 5: Get Linear Project Context
 
@@ -183,7 +195,7 @@ Based on ticket count and complexity, recommend an execution path. **User always
 ## Key Constraints
 
 - **Tickets always created in "Planned" state, never "Todo."** Moving to Todo is a deliberate human action that triggers Symphony.
-- **QA review is mandatory, not optional.** Every ticket set goes through QA before Linear creation.
+- **One critique round, no re-review loop.** Apply obvious fixes, surface remaining tensions to the user at Linear review (Step 7).
 - **Acceptance criteria must be autonomously verifiable.** If an agent cannot confirm completion by running a command, the criterion is not good enough.
 - **Local execution reads plan/spec files, not Linear tickets.** Subagents work from the source documents.
 - **Symphony execution reads tickets from Linear.** That is how Symphony discovers and dispatches work.
@@ -192,7 +204,7 @@ Based on ticket count and complexity, recommend an execution path. **User always
 ## Integration
 
 **Required skills:**
-- **superpowers:role-based-review** -- QA review of ticket set (mandatory step 4)
+- **superpowers:consulting-other-ais** -- single multi-AI critique round (Step 4)
 
 **Execution skills (one chosen by user):**
 - **superpowers:subagent-driven-development** -- local execution path
