@@ -182,6 +182,7 @@ echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee /etc/sysctl.d/9
 - **using-git-worktrees** - Parallel development branches
 - **finishing-a-development-branch** - Merge/PR decision workflow
 - **subagent-driven-development** - Fast iteration with two-stage review (spec compliance, then code quality)
+- **autonomous-feature-development** - Lean alternative to brainstorm + writing-plans + subagent-driven-development. One spec with built-in validation harness and explicit escalation triggers; one mandatory multi-AI critique on the spec; heterogeneous execution where Claude subagents, Codex, and Gemini each take tasks suited to their skillset. For medium-stakes work where multi-round reviews don't pay back their cost.
 
 **Meta**
 - **writing-skills** - Create new skills following best practices (includes testing methodology)
