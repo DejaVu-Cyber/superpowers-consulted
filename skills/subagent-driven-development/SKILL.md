@@ -5,11 +5,11 @@ description: Use when executing implementation plans with independent tasks in t
 
 # Subagent-Driven Development
 
-Execute plan by dispatching fresh subagent per task, with two-stage review after each: spec compliance review first (Codex for an independent second opinion, Claude subagent fallback), then code quality review.
+Execute plan by dispatching a fresh isolated implementation agent per task, with two-stage review after each: spec compliance review first (Codex for an independent second opinion, local review-agent fallback), then code quality review.
 
-**Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
+**Why isolated agents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
-**Core principle:** Fresh subagent per task + two-stage review (spec then quality) = high quality, fast iteration
+**Core principle:** Fresh isolated agent per task + two-stage review (spec then quality) = high quality, fast iteration
 
 ## When to Use
 
@@ -33,7 +33,7 @@ digraph when_to_use {
 
 **vs. Executing Plans (parallel session):**
 - Same session (no context switch)
-- Fresh subagent per task (no context pollution)
+- Fresh isolated agent per task (no context pollution)
 - Two-stage review after each task: spec compliance first, then code quality
 - Faster iteration (no human-in-loop between tasks)
 
@@ -45,52 +45,68 @@ digraph process {
 
     subgraph cluster_per_task {
         label="Per Task";
-        "Dispatch implementer subagent (./implementer-prompt.md)" [shape=box];
-        "Implementer subagent asks questions?" [shape=diamond];
+        "Dispatch implementer agent (./implementer-prompt.md)" [shape=box];
+        "Implementer agent asks questions?" [shape=diamond];
         "Answer questions, provide context" [shape=box];
-        "Implementer subagent implements, tests, commits, self-reviews" [shape=box];
-        "Run spec reviewer (Codex if available, Claude subagent fallback — ./spec-reviewer-prompt.md)" [shape=box];
+        "Implementer agent implements, tests, commits, self-reviews" [shape=box];
+        "Run spec reviewer (Codex if available, local reviewer agent fallback — ./spec-reviewer-prompt.md)" [shape=box];
         "Spec reviewer confirms code matches spec?" [shape=diamond];
-        "Implementer subagent fixes spec gaps" [shape=box];
-        "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [shape=box];
-        "Code quality reviewer subagent approves?" [shape=diamond];
-        "Implementer subagent fixes quality issues" [shape=box];
-        "Mark task complete in TodoWrite" [shape=box];
+        "Implementer agent fixes spec gaps" [shape=box];
+        "Dispatch code quality reviewer agent (./code-quality-reviewer-prompt.md)" [shape=box];
+        "Code quality reviewer agent approves?" [shape=diamond];
+        "Implementer agent fixes quality issues" [shape=box];
+        "Mark task complete in task tracker" [shape=box];
     }
 
-    "Read plan, extract all tasks with full text, note context, create TodoWrite" [shape=box];
+    "Read plan, extract all tasks with full text, note context, create task tracker" [shape=box];
     "More tasks remain?" [shape=diamond];
-    "Offer final review: 3-way / subagent-only / skip" [shape=diamond];
-    "3-way review: Claude subagent + Codex + Gemini vs plan" [shape=box];
-    "Dispatch final code reviewer subagent for entire implementation" [shape=box];
+    "Offer final review: 3-way / local-only / skip" [shape=diamond];
+    "3-way review: local reviewer agent + Codex + Gemini vs plan" [shape=box];
+    "Dispatch final code reviewer agent for entire implementation" [shape=box];
     "Synthesize all review perspectives" [shape=box];
     "Use superpowers:finishing-a-development-branch" [shape=box style=filled fillcolor=lightgreen];
 
-    "Read plan, extract all tasks with full text, note context, create TodoWrite" -> "Dispatch implementer subagent (./implementer-prompt.md)";
-    "Dispatch implementer subagent (./implementer-prompt.md)" -> "Implementer subagent asks questions?";
-    "Implementer subagent asks questions?" -> "Answer questions, provide context" [label="yes"];
-    "Answer questions, provide context" -> "Dispatch implementer subagent (./implementer-prompt.md)";
-    "Implementer subagent asks questions?" -> "Implementer subagent implements, tests, commits, self-reviews" [label="no"];
-    "Implementer subagent implements, tests, commits, self-reviews" -> "Run spec reviewer (Codex if available, Claude subagent fallback — ./spec-reviewer-prompt.md)";
-    "Run spec reviewer (Codex if available, Claude subagent fallback — ./spec-reviewer-prompt.md)" -> "Spec reviewer confirms code matches spec?";
-    "Spec reviewer confirms code matches spec?" -> "Implementer subagent fixes spec gaps" [label="no"];
-    "Implementer subagent fixes spec gaps" -> "Run spec reviewer (Codex if available, Claude subagent fallback — ./spec-reviewer-prompt.md)" [label="re-review with prior findings + new SHA"];
-    "Spec reviewer confirms code matches spec?" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="yes"];
-    "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" -> "Code quality reviewer subagent approves?";
-    "Code quality reviewer subagent approves?" -> "Implementer subagent fixes quality issues" [label="no"];
-    "Implementer subagent fixes quality issues" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="re-review"];
-    "Code quality reviewer subagent approves?" -> "Mark task complete in TodoWrite" [label="yes"];
-    "Mark task complete in TodoWrite" -> "More tasks remain?";
-    "More tasks remain?" -> "Dispatch implementer subagent (./implementer-prompt.md)" [label="yes"];
-    "More tasks remain?" -> "Offer final review: 3-way / subagent-only / skip" [label="no"];
-    "Offer final review: 3-way / subagent-only / skip" -> "3-way review: Claude subagent + Codex + Gemini vs plan" [label="3-way"];
-    "Offer final review: 3-way / subagent-only / skip" -> "Dispatch final code reviewer subagent for entire implementation" [label="subagent-only"];
-    "Offer final review: 3-way / subagent-only / skip" -> "Use superpowers:finishing-a-development-branch" [label="skip"];
-    "3-way review: Claude subagent + Codex + Gemini vs plan" -> "Synthesize all review perspectives";
-    "Dispatch final code reviewer subagent for entire implementation" -> "Use superpowers:finishing-a-development-branch";
+    "Read plan, extract all tasks with full text, note context, create task tracker" -> "Dispatch implementer agent (./implementer-prompt.md)";
+    "Dispatch implementer agent (./implementer-prompt.md)" -> "Implementer agent asks questions?";
+    "Implementer agent asks questions?" -> "Answer questions, provide context" [label="yes"];
+    "Answer questions, provide context" -> "Dispatch implementer agent (./implementer-prompt.md)";
+    "Implementer agent asks questions?" -> "Implementer agent implements, tests, commits, self-reviews" [label="no"];
+    "Implementer agent implements, tests, commits, self-reviews" -> "Run spec reviewer (Codex if available, local reviewer agent fallback — ./spec-reviewer-prompt.md)";
+    "Run spec reviewer (Codex if available, local reviewer agent fallback — ./spec-reviewer-prompt.md)" -> "Spec reviewer confirms code matches spec?";
+    "Spec reviewer confirms code matches spec?" -> "Implementer agent fixes spec gaps" [label="no"];
+    "Implementer agent fixes spec gaps" -> "Run spec reviewer (Codex if available, local reviewer agent fallback — ./spec-reviewer-prompt.md)" [label="re-review with prior findings + new SHA"];
+    "Spec reviewer confirms code matches spec?" -> "Dispatch code quality reviewer agent (./code-quality-reviewer-prompt.md)" [label="yes"];
+    "Dispatch code quality reviewer agent (./code-quality-reviewer-prompt.md)" -> "Code quality reviewer agent approves?";
+    "Code quality reviewer agent approves?" -> "Implementer agent fixes quality issues" [label="no"];
+    "Implementer agent fixes quality issues" -> "Dispatch code quality reviewer agent (./code-quality-reviewer-prompt.md)" [label="re-review"];
+    "Code quality reviewer agent approves?" -> "Mark task complete in task tracker" [label="yes"];
+    "Mark task complete in task tracker" -> "More tasks remain?";
+    "More tasks remain?" -> "Dispatch implementer agent (./implementer-prompt.md)" [label="yes"];
+    "More tasks remain?" -> "Offer final review: 3-way / local-only / skip" [label="no"];
+    "Offer final review: 3-way / local-only / skip" -> "3-way review: local reviewer agent + Codex + Gemini vs plan" [label="3-way"];
+    "Offer final review: 3-way / local-only / skip" -> "Dispatch final code reviewer agent for entire implementation" [label="local-only"];
+    "Offer final review: 3-way / local-only / skip" -> "Use superpowers:finishing-a-development-branch" [label="skip"];
+    "3-way review: local reviewer agent + Codex + Gemini vs plan" -> "Synthesize all review perspectives";
+    "Dispatch final code reviewer agent for entire implementation" -> "Use superpowers:finishing-a-development-branch";
     "Synthesize all review perspectives" -> "Use superpowers:finishing-a-development-branch";
 }
 ```
+
+## Platform Adapters
+
+Follow this workflow by capability, not literal tool name.
+
+Claude Code:
+- Use Task/Agent for implementer and reviewer agents.
+- Use TodoWrite for the task tracker.
+- Use the prompt templates in this directory as dispatched agent prompts.
+
+Codex:
+- Read `../using-superpowers/references/codex-tools.md` before dispatching agents.
+- Use `update_plan` for the task tracker.
+- Use `spawn_agent` with `agent_type: worker` for implementation tasks. Give each worker explicit ownership of the task files/modules, tell it it is not alone in the codebase, and tell it not to revert others' edits.
+- Use `spawn_agent` with `agent_type: explorer` for read-only reviewer fallbacks. Use `worker` only if asking the reviewer to patch issues directly.
+- Use `wait_agent` only when the next controller step needs that result, and `close_agent` after integrating the result.
 
 ## Model Selection
 
@@ -109,7 +125,7 @@ Use the least powerful model that can handle each role to conserve cost and incr
 
 ## Handling Implementer Status
 
-Implementer subagents report one of four statuses. Handle each appropriately:
+Implementer agents report one of four statuses. Handle each appropriately:
 
 **DONE:** Proceed to spec compliance review.
 
@@ -127,13 +143,13 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 ## Spec Compliance Review (Per Task)
 
-Spec review runs as a stateless, one-shot review against the current HEAD of the implementer's work. Codex is preferred for an independent second opinion outside the main session's context; Claude subagent is the fallback.
+Spec review runs as a stateless, one-shot review against the current HEAD of the implementer's work. Codex is preferred for an independent second opinion outside the main session's context; a local isolated reviewer agent is the fallback.
 
 **Provider selection (once per run):**
 
 1. At skill start, run `skills/consulting-other-ais/scripts/consult.sh check`
 2. If Codex is available → use Codex path for all per-task spec reviews
-3. If not → use Claude subagent path
+3. If not → use local reviewer-agent path
 
 Cache the choice. Don't re-probe per task.
 
@@ -153,7 +169,7 @@ Stateless — start a fresh provider call. Pass the *same* task text, the *new* 
 
 Loop until reviewer returns ✅, then proceed to code quality review.
 
-**Fallback mid-run:** if a Codex call returns soft-failure language despite `consult.sh`'s auto-retry, switch to Claude subagent for the rest of the run.
+**Fallback mid-run:** if a Codex call returns soft-failure language despite `consult.sh`'s auto-retry, switch to the local reviewer-agent path for the rest of the run.
 
 ## Linear Ticket Tracking
 
@@ -171,9 +187,9 @@ This keeps Linear in sync without making it the source of truth for implementati
 
 ## Prompt Templates
 
-- `./implementer-prompt.md` - Dispatch implementer subagent
-- `./spec-reviewer-prompt.md` - Dispatch spec compliance reviewer subagent
-- `./code-quality-reviewer-prompt.md` - Dispatch code quality reviewer subagent
+- `./implementer-prompt.md` - Dispatch isolated implementer agent
+- `./spec-reviewer-prompt.md` - Dispatch spec compliance reviewer
+- `./code-quality-reviewer-prompt.md` - Dispatch code quality reviewer
 
 ## Example Workflow
 
@@ -182,12 +198,12 @@ You: I'm using Subagent-Driven Development to execute this plan.
 
 [Read plan file once: docs/superpowers/plans/feature-plan.md]
 [Extract all 5 tasks with full text and context]
-[Create TodoWrite with all tasks]
+[Create task tracker with all tasks]
 
 Task 1: Hook installation script
 
 [Get Task 1 text and context (already extracted)]
-[Dispatch implementation subagent with full task text + context]
+[Dispatch isolated implementation agent with full task text + context]
 
 Implementer: "Before I begin - should the hook be installed at user or system level?"
 
@@ -200,7 +216,7 @@ Implementer: "Got it. Implementing now..."
   - Self-review: Found I missed --force flag, added it
   - Committed
 
-[Run spec compliance review via Codex (or Claude subagent if Codex unavailable)]
+[Run spec compliance review via Codex (or local reviewer agent if Codex unavailable)]
 Spec reviewer: ✅ Spec compliant - all requirements met, nothing extra
 
 [Get git SHAs, dispatch code quality reviewer]
@@ -211,7 +227,7 @@ Code reviewer: Strengths: Good test coverage, clean. Issues: None. Approved.
 Task 2: Recovery modes
 
 [Get Task 2 text and context (already extracted)]
-[Dispatch implementation subagent with full task text + context]
+[Dispatch isolated implementation agent with full task text + context]
 
 Implementer: [No questions, proceeds]
 Implementer:
@@ -247,16 +263,16 @@ Code reviewer: ✅ Approved
 [After all tasks]
 
 You: All tasks complete. How would you like the final review?
-  1. 3-way review — Claude subagent + Codex + Gemini review against plan
-  2. Subagent only — Claude code reviewer
+  1. 3-way review — local reviewer agent + Codex + Gemini review against plan
+  2. Local reviewer only — local code reviewer
   3. Skip final review
 
 User: 1
 
-[Claude subagent dispatched with full implementation range]
+[local reviewer agent dispatched with full implementation range]
 [Codex + Gemini consulted in parallel with plan compliance prompt]
 
-Claude subagent: Clean architecture, all tests pass, minor naming nit
+local reviewer agent: Clean architecture, all tests pass, minor naming nit
 Codex: All 5 plan tasks implemented. Task 3 spec says "retry 3 times" but code retries twice.
 Gemini: Plan says "log to structured JSON" but logging uses plain text in task 4.
 
@@ -277,9 +293,9 @@ After all tasks are complete, offer a final review that checks the entire implem
 ```
 All tasks complete. How would you like the final review?
 
-1. **3-way review** — Claude subagent reviews code quality while Codex + Gemini
+1. **3-way review** — local reviewer agent reviews code quality while Codex + Gemini
    review implementation against the plan (recommended for non-trivial plans)
-2. **Subagent only** — Claude code reviewer for the full implementation
+2. **Local reviewer only** — local code reviewer for the full implementation
 3. **Skip** — Proceed directly to finishing the branch
 
 Which option?
@@ -289,7 +305,7 @@ Which option?
 
 Run in parallel:
 
-**A. Claude subagent** — Standard final code review (existing behavior). Dispatch with `requesting-code-review/code-reviewer.md` template, using the BASE_SHA from before the first task and HEAD_SHA from after the last.
+**A. Local reviewer agent** — Standard final code review. Dispatch with `requesting-code-review/code-reviewer.md` template, using the BASE_SHA from before the first task and HEAD_SHA from after the last.
 
 **B. External AIs vs plan** — Use `consulting-other-ais` to send Codex and Gemini a plan compliance prompt. The prompt should include:
 
@@ -324,7 +340,7 @@ Output a task-by-task compliance table, then list any issues.
 **Synthesize** — Present all three perspectives with clear attribution:
 
 ```
-**Claude subagent (code quality):**
+**Local reviewer agent (code quality):**
 [summary — strengths, issues by severity, assessment]
 
 **Codex (plan compliance):**
@@ -336,15 +352,15 @@ Output a task-by-task compliance table, then list any issues.
 **Synthesis:**
 - Agreed: [what all reviewers confirm is solid]
 - Plan deviations: [list with task numbers]
-- Code issues: [from Claude subagent]
+- Code issues: [from local reviewer agent]
 - Recommendation: [fix list before proceeding, or ready to go]
 ```
 
 If deviations are found, fix them before proceeding to `finishing-a-development-branch`. Re-run tests after fixes.
 
-### Option 2: Subagent Only
+### Option 2: Local Reviewer Only
 
-Dispatch the standard final code-reviewer subagent (existing behavior). Use the full implementation range (BASE_SHA from before first task to current HEAD).
+Dispatch the standard final code-reviewer agent. Use the full implementation range (BASE_SHA from before first task to current HEAD).
 
 ### Option 3: Skip
 
@@ -353,10 +369,10 @@ Proceed directly to `finishing-a-development-branch`.
 ## Advantages
 
 **vs. Manual execution:**
-- Subagents follow TDD naturally
+- Isolated implementation agents follow TDD naturally
 - Fresh context per task (no confusion)
-- Parallel-safe (subagents don't interfere)
-- Subagent can ask questions (before AND during work)
+- Parallel-safe (agents have explicit ownership boundaries)
+- Implementation agent can ask questions (before AND during work)
 
 **vs. Executing Plans:**
 - Same session (no handoff)
@@ -366,7 +382,7 @@ Proceed directly to `finishing-a-development-branch`.
 **Efficiency gains:**
 - No file reading overhead (controller provides full text)
 - Controller curates exactly what context is needed
-- Subagent gets complete information upfront
+- Implementation agent gets complete information upfront
 - Questions surfaced before work begins (not after)
 
 **Quality gates:**
@@ -377,7 +393,7 @@ Proceed directly to `finishing-a-development-branch`.
 - Code quality ensures implementation is well-built
 
 **Cost:**
-- More subagent invocations (implementer + 2 reviewers per task)
+- More isolated-agent invocations (implementer + 2 reviewers per task)
 - Controller does more prep work (extracting all tasks upfront)
 - Review loops add iterations
 - But catches issues early (cheaper than debugging later)
@@ -388,29 +404,29 @@ Proceed directly to `finishing-a-development-branch`.
 - Start implementation on main/master branch without explicit user consent
 - Skip reviews (spec compliance OR code quality)
 - Proceed with unfixed issues
-- Dispatch multiple implementation subagents in parallel (conflicts)
-- Make subagent read plan file (provide full text instead)
-- Skip scene-setting context (subagent needs to understand where task fits)
-- Ignore subagent questions (answer before letting them proceed)
+- Dispatch multiple implementation agents in parallel (conflicts)
+- Make the implementation agent read plan file (provide full text instead)
+- Skip scene-setting context (the implementation agent needs to understand where task fits)
+- Ignore implementation-agent questions (answer before letting them proceed)
 - Accept "close enough" on spec compliance (spec reviewer found issues = not done)
 - Skip review loops (reviewer found issues = implementer fixes = review again)
 - Let implementer self-review replace actual review (both are needed)
 - **Start code quality review before spec compliance is ✅** (wrong order)
 - Move to next task while either review has open issues
 
-**If subagent asks questions:**
+**If implementation agent asks questions:**
 - Answer clearly and completely
 - Provide additional context if needed
 - Don't rush them into implementation
 
 **If reviewer finds issues:**
-- Implementer (same subagent) fixes them
+- Implementer (same isolated agent, when available) fixes them
 - Reviewer reviews again
 - Repeat until approved
 - Don't skip the re-review
 
-**If subagent fails task:**
-- Dispatch fix subagent with specific instructions
+**If implementation agent fails task:**
+- Dispatch fix agent with specific instructions
 - Don't try to fix manually (context pollution)
 
 ## Integration
@@ -418,14 +434,14 @@ Proceed directly to `finishing-a-development-branch`.
 **Required workflow skills:**
 - **superpowers:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
 - **superpowers:writing-plans** - Creates the plan this skill executes
-- **superpowers:requesting-code-review** - Code review template for reviewer subagents
+- **superpowers:requesting-code-review** - Code review template for reviewer agents
 - **superpowers:finishing-a-development-branch** - Complete development after all tasks
 
 **Optional:**
-- **superpowers:consulting-other-ais** - Codex for per-task spec compliance review (falls back to Claude subagent when unavailable) and external AI perspectives for 3-way final plan compliance review
+- **superpowers:consulting-other-ais** - Codex for per-task spec compliance review (falls back to a local reviewer agent when unavailable) and external AI perspectives for 3-way final plan compliance review
 
-**Subagents should use:**
-- **superpowers:test-driven-development** - Subagents follow TDD for each task
+**Implementation agents should use:**
+- **superpowers:test-driven-development** - Implementation agents follow TDD for each task
 
 **Alternative workflow:**
 - **superpowers:executing-plans** - Use for parallel session instead of same-session execution

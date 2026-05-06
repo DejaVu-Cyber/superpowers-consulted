@@ -1,13 +1,17 @@
 # Spec Document Reviewer Prompt Template
 
-Use this template when dispatching a spec document reviewer subagent.
+Use this template when dispatching an isolated spec document reviewer.
+
+Platform adapters:
+- Claude Code: use Task/Agent with `general-purpose`.
+- Codex: use `spawn_agent` with `agent_type: explorer` because this review is read-only.
 
 **Purpose:** Verify the spec is complete, consistent, and ready for implementation planning.
 
 **Dispatch after:** Spec document is written to docs/superpowers/specs/
 
 ```
-Task tool (general-purpose):
+Isolated reviewer agent:
   description: "Review spec document"
   prompt: |
     You are a spec document reviewer. Verify this spec is complete and ready for planning.

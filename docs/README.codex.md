@@ -38,6 +38,17 @@ Fetch and follow instructions from https://raw.githubusercontent.com/obra/superp
    multi_agent = true
    ```
 
+### Local Development Mode
+
+To share one working tree with Claude Code dev mode, symlink Codex directly to that checkout's `skills/` directory:
+
+```bash
+mkdir -p ~/.agents/skills
+ln -s /path/to/superpowers/skills ~/.agents/skills/superpowers
+```
+
+Codex picks up file changes after restart. It does not read `.claude-plugin/plugin.json`, so version bumps are only needed for Claude/plugin workflows.
+
 ### Windows
 
 Use a junction instead of a symlink (works without Developer Mode):

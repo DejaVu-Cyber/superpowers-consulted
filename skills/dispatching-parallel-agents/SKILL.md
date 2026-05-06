@@ -62,16 +62,15 @@ Each agent gets:
 - **Clear goal:** Make these tests pass
 - **Constraints:** Don't change other code
 - **Expected output:** Summary of what you found and fixed
+- **Coordination boundary:** Files/modules it owns, and warning that other agents may also be editing the repo
 
 ### 3. Dispatch in Parallel
 
-```typescript
-// In Claude Code / AI environment
-Task("Fix agent-tool-abort.test.ts failures")
-Task("Fix batch-completion-behavior.test.ts failures")
-Task("Fix tool-approval-race-conditions.test.ts failures")
-// All three run concurrently
-```
+Use the platform's isolated-agent dispatch mechanism for all independent tasks before waiting for results.
+
+Platform adapters:
+- Claude Code: dispatch multiple Task/Agent calls.
+- Codex: call `spawn_agent` once per independent domain. Use `worker` for implementation/fix tasks and `explorer` for read-only investigations. Give each worker explicit file/module ownership and tell it not to revert edits made by others.
 
 ### 4. Review and Integrate
 

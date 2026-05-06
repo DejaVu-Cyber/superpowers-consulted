@@ -141,7 +141,7 @@ The `--model` flag overrides the provider model for a single invocation. With `b
 
 The `--timeout` flag overrides the timeout (default 600s) for this invocation.
 
-Or invoke directly via Bash tool if the script isn't available:
+Or invoke directly via the platform's shell tool if the script isn't available:
 
 ```bash
 # Codex (read-only)

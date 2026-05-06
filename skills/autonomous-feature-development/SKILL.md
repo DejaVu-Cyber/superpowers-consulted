@@ -1,11 +1,11 @@
 ---
 name: autonomous-feature-development
-description: Use when shipping a feature with less ceremony than the brainstorm + writing-plans + subagent-driven-development pipeline. Collapses into one skill with socratic intent capture, a single spec containing a built-in validation harness and explicit escalation triggers, mandatory multi-AI spec critique, and autonomous heterogeneous execution where Claude subagents, Codex, and Gemini take individual tasks based on skillset. Best for medium-stakes work where the cost of multi-round reviews outweighs their signal. For high-stakes architecture, keep using the existing pipeline.
+description: Use when shipping a feature with less ceremony than the brainstorm + writing-plans + subagent-driven-development pipeline. Collapses into one skill with socratic intent capture, a single spec containing a built-in validation harness and explicit escalation triggers, mandatory multi-AI spec critique, and autonomous heterogeneous execution where local agents, Codex, and Gemini take individual tasks based on skillset. Best for medium-stakes work where the cost of multi-round reviews outweighs their signal. For high-stakes architecture, keep using the existing pipeline.
 ---
 
 # Autonomous Feature Development
 
-Take a feature from idea to shipped through a single skill. Socratic questions surface intent. A single spec captures scope, file map, **validation harness** (executable proof the work succeeded), and **escalation triggers** (concrete conditions that force a human in the loop). Multi-AI spec critique runs once before user approval. Then heterogeneous executors — Claude subagents, Codex, Gemini — each take tasks suited to their skillset. The driving agent only bothers the user when a declared trigger fires.
+Take a feature from idea to shipped through a single skill. Socratic questions surface intent. A single spec captures scope, file map, **validation harness** (executable proof the work succeeded), and **escalation triggers** (concrete conditions that force a human in the loop). Multi-AI spec critique runs once before user approval. Then heterogeneous executors — local agents, Codex, Gemini — each take tasks suited to their skillset. The driving agent only bothers the user when a declared trigger fires.
 
 **Core principles:**
 - One spec, no separate plan. The spec contains everything execution needs.
@@ -110,10 +110,10 @@ Required sections (all seven, in this order):
 5. **Escalation triggers** — concrete, enforceable list across four kinds:
    - **Functional** — e.g. "2 consecutive harness failures on the same task", "test exits non-zero after fix attempt"
    - **Semantic** — e.g. "spec is ambiguous on this task", "scope creep detected", "discovery of behavior not described in spec"
-   - **Resource** — e.g. "subagent exceeded N tokens or M wall-clock minutes", "context window approaching limit"
+   - **Resource** — e.g. "executor exceeded N tokens or M wall-clock minutes", "context window approaching limit"
    - **Domain** — categorical hard stops (always confirm regardless of autonomy): "data loss risk", "production write", "schema migration", "credential / secret handling", "deletion of files outside scope"
 6. **Autonomy** — populated in Phase 3 after user negotiation. Format: global default + per-task overrides where they apply.
-7. **Tasks** — ordered list. Each task has: intent, files touched, harness step that proves it (subset of section 4), task-specific escalation notes if any, and a `provider:` field (`claude` | `codex` | `gemini`).
+7. **Tasks** — ordered list. Each task has: intent, files touched, harness step that proves it (subset of section 4), task-specific escalation notes if any, and a `provider:` field (`local` | `codex` | `gemini`).
 
 ### Phase 2.5 — Multi-AI spec critique (mandatory, default on)
 
@@ -168,7 +168,11 @@ User approval → Phase 4.
 
 ### Phase 4 — Heterogeneous execution
 
-Dispatch one task at a time, in spec order. TodoWrite tracks them.
+Dispatch one task at a time, in spec order. Track progress with the platform's task tracker.
+
+Platform adapters:
+- Claude Code: local agent means a Claude subagent via Task/Agent; use TodoWrite for progress.
+- Codex: local agent means `spawn_agent` with `agent_type: worker`; use `update_plan` for progress. Read `../using-superpowers/references/codex-tools.md` before dispatching. Give each worker explicit file/module ownership and tell it not to revert edits made by others.
 
 #### Task-to-provider routing
 
@@ -178,14 +182,14 @@ Pick per task based on character. The spec author proposed defaults; user adjust
 |----------------|------------------|-----|
 | Mechanical edit, refactor, test scaffolding, strict spec adherence | **codex** | Strong on implementation patterns, follows specs precisely |
 | Touches >10 files or needs broad-context reads | **gemini** | Largest context window |
-| Design judgment, ambiguous spec, multi-file orchestration, novel logic | **claude** subagent | Best at nuance; handles ambiguity |
-| Default when unsure | **claude** subagent | Safest fallback |
+| Design judgment, ambiguous spec, multi-file orchestration, novel logic | **local** agent | Best available in-session executor; handles ambiguity |
+| Default when unsure | **local** agent | Safest fallback |
 
 The spec's per-task `provider:` field locks in the choice. Driving agent does not re-decide.
 
 #### Dispatch
 
-For Claude subagent: use the Agent tool with subagent_type `general-purpose` (or a more specific one if appropriate).
+For local agents: use the platform's isolated-agent mechanism. In Claude Code, use the Agent tool with subagent_type `general-purpose` (or a more specific one if appropriate). In Codex, use `spawn_agent` with `agent_type: worker`.
 
 For Codex or Gemini: use `scripts/dispatch.sh` (this skill's wrapper around `consult.sh` for execution mode):
 
@@ -225,13 +229,13 @@ Adopted from `subagent-driven-development/SKILL.md:111-126`. Every executor must
 
 #### Trust-but-verify after non-Claude tasks
 
-Codex and Gemini exit semantics are looser than Claude subagents (Codex sometimes claims done while admitting it couldn't read files — see `CLAUDE.md` Codex gotchas §4). After any Codex or Gemini task:
+Codex and Gemini exit semantics are looser than local isolated agents (Codex sometimes claims done while admitting it couldn't read files — see `CLAUDE.md` Codex gotchas §4). After any Codex or Gemini task:
 
 1. Driving agent reads the diff (`git diff` since task start SHA)
 2. Re-runs the task's harness step
 3. Only then marks the task complete
 
-For Claude subagents, the harness pass during execution suffices — the driving agent can spot-check at its discretion but is not required to re-run.
+For local isolated agents, the harness pass during execution suffices — the driving agent can spot-check at its discretion but is not required to re-run.
 
 #### Stuck-helper (on-demand consult)
 
@@ -252,7 +256,7 @@ EOF
 )"
 ```
 
-Route to the providers *not* currently executing the task (i.e. if Codex is running the task, ask Gemini and Claude). On-demand only — never a mandatory checkpoint.
+Route to the providers *not* currently executing the task (i.e. if Codex is running the task, ask Gemini and a local reviewer agent). On-demand only — never a mandatory checkpoint.
 
 #### Notification policy
 
@@ -283,7 +287,7 @@ Phase 2.5 is the one mandatory checkpoint — single round, highest leverage.
 
 ## Status protocol contract
 
-Every executor (Claude subagent, Codex, Gemini) ends with one of these on its own line:
+Every executor (local agent, Codex, Gemini) ends with one of these on its own line:
 
 ```
 STATUS: DONE — <reason>
@@ -328,8 +332,8 @@ This is enforced via the dispatch prompt. Executors that don't comply are re-dis
 - Status protocol vocabulary from `superpowers:subagent-driven-development`
 - Question cadence pattern from `superpowers:brainstorming`
 
-**Subagents should use:**
-- `superpowers:test-driven-development` — Claude subagent executors apply TDD when writing tests is part of the task
+**Local agents should use:**
+- `superpowers:test-driven-development` — local agent executors apply TDD when writing tests is part of the task
 
 **Alternative paths (use instead of this skill when):**
 - `superpowers:brainstorming` → `superpowers:writing-plans` → `superpowers:subagent-driven-development` — high-stakes work where multiple review rounds earn their cost
@@ -356,7 +360,7 @@ You: I'm using autonomous-feature-development for this.
 
 [Phase 2] Spec written to docs/superpowers/specs/2026-04-30-list-skills-flag-spec.md
   - Context, Scope, File map (just consult.sh), Harness (the command),
-    Triggers (the two), Tasks (one task: add the flag, route claude)
+    Triggers (the two), Tasks (one task: add the flag, route local)
 
 [Phase 2.5] Codex + Gemini critique:
   Codex: "Harness should also verify exit code, not just stdout"
@@ -368,8 +372,8 @@ You: I'm using autonomous-feature-development for this.
 [Phase 3] Show user spec + remaining critique. Negotiate autonomy:
   User: "senior-dev"
 
-[Phase 4] One task, claude provider, dispatched as Claude subagent.
-  Subagent: implements, runs harness, returns STATUS: DONE.
+[Phase 4] One task, local provider, dispatched as a local isolated agent.
+  Local agent: implements, runs harness, returns STATUS: DONE.
 
 [Phase 5] Driving agent re-runs harness end-to-end. ✅
   No DONE_WITH_CONCERNS to surface.

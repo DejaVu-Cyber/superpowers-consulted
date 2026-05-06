@@ -1,13 +1,17 @@
 # Plan Document Reviewer Prompt Template
 
-Use this template when dispatching a plan document reviewer subagent.
+Use this template when dispatching an isolated plan document reviewer.
+
+Platform adapters:
+- Claude Code: use Task/Agent with `general-purpose`.
+- Codex: use `spawn_agent` with `agent_type: explorer` because this review is read-only.
 
 **Purpose:** Verify the plan captures the right decisions and is actionable by an implementing agent.
 
 **Dispatch after:** The complete plan is written.
 
 ```
-Task tool (general-purpose):
+Isolated reviewer agent:
   description: "Review plan document"
   prompt: |
     You are a plan document reviewer. Verify this plan is complete and ready for implementation by a capable agent.

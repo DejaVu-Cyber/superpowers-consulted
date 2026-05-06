@@ -1,13 +1,17 @@
 # Code Quality Reviewer Prompt Template
 
-Use this template when dispatching a code quality reviewer subagent.
+Use this template when dispatching an isolated code quality reviewer.
+
+Platform adapters:
+- Claude Code: use Task/Agent with `superpowers:code-reviewer` when available.
+- Codex: use `spawn_agent` with `agent_type: explorer` for read-only review. Use `worker` only if the reviewer is expected to edit files.
 
 **Purpose:** Verify implementation is well-built (clean, tested, maintainable)
 
 **Only dispatch after spec compliance review passes.**
 
 ```
-Task tool (superpowers:code-reviewer):
+Isolated code-review agent:
   Use template at requesting-code-review/code-reviewer.md
 
   WHAT_WAS_IMPLEMENTED: [from implementer's report]

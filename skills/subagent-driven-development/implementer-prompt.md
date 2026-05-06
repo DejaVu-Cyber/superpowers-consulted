@@ -1,9 +1,13 @@
 # Implementer Subagent Prompt Template
 
-Use this template when dispatching an implementer subagent.
+Use this template when dispatching an isolated implementer agent.
+
+Platform adapters:
+- Claude Code: use Task/Agent with `general-purpose`.
+- Codex: use `spawn_agent` with `agent_type: worker`; assign the files/modules this worker owns.
 
 ```
-Task tool (general-purpose):
+Isolated implementer agent:
   description: "Implement Task N: [task name]"
   prompt: |
     You are implementing Task N: [task name]
@@ -37,6 +41,12 @@ Task tool (general-purpose):
     6. Report back
 
     Work from: [directory]
+
+    ## Coordination
+
+    You are not alone in the codebase. Other agents or the controller may also be
+    editing files. Do not revert edits you did not make. Work only in your assigned
+    files/modules unless you first report why the scope must change.
 
     **While you work:** If you encounter something unexpected or unclear, **ask questions**.
     It's always OK to pause and clarify. Don't guess or make assumptions.

@@ -4,7 +4,7 @@ Use this template when running a spec compliance review.
 
 **Purpose:** Verify implementer built what was requested (nothing more, nothing less)
 
-**Provider selection:** Prefer Codex for a second-opinion independent of the main session. Fall back to a Claude subagent if Codex is unavailable.
+**Provider selection:** Prefer Codex for a second-opinion independent of the main session. Fall back to a local isolated reviewer agent if Codex is unavailable.
 
 ## Availability Check
 
@@ -15,7 +15,7 @@ skills/consulting-other-ais/scripts/consult.sh check
 ```
 
 - `codex: available` → use Codex path (below)
-- `codex: not available` → use Claude subagent fallback
+- `codex: not available` → use local reviewer-agent fallback
 
 Cache the result for the rest of the run.
 
@@ -102,17 +102,21 @@ Codex reads files directly from the repo — do not paste file contents; give pa
 
 Each review round is a fresh stateless call. For re-review, pass the previous round's findings inline via `{{PRIOR_FINDINGS}}` and the new HEAD_SHA. No conversation thread needed.
 
-If Codex returns soft-failure language ("I can't read", "paste the contents") despite `consult.sh`'s auto-retry, treat it as unavailable for this review and fall back to the Claude subagent path for the remainder of the run.
+If Codex returns soft-failure language ("I can't read", "paste the contents") despite `consult.sh`'s auto-retry, treat it as unavailable for this review and fall back to the local reviewer-agent path for the remainder of the run.
 
-## Claude Subagent Fallback
+## Local Reviewer-Agent Fallback
 
 When Codex is unavailable:
 
 ```
-Task tool (general-purpose):
+Isolated reviewer agent:
   description: "Review spec compliance for Task N"
   prompt: |
     <prompt body from above, with substitutions>
 ```
 
 Same prompt body. Re-review = new Task dispatch with prior findings in `{{PRIOR_FINDINGS}}` and updated SHAs.
+
+Platform adapters:
+- Claude Code: use Task/Agent with `general-purpose`.
+- Codex: use `spawn_agent` with `agent_type: explorer` because this is read-only.

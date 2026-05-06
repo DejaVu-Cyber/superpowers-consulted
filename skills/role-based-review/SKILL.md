@@ -34,14 +34,14 @@ Wait for confirmation before proceeding.
 
 ## Provider Pool and Assignment
 
-Each role has a preferred provider with a fallback chain. Claude subagent is always the final fallback.
+Each role has a preferred provider with a fallback chain. A local isolated reviewer agent is always the final fallback.
 
 | Role | Preferred | Fallback | Final Fallback |
 |------|-----------|----------|----------------|
-| Architecture | Codex | Gemini | Claude subagent |
-| QA | Codex | Gemini | Claude subagent |
-| Product | Gemini | Codex | Claude subagent |
-| UX | Gemini | Codex | Claude subagent |
+| Architecture | Codex | Gemini | Local reviewer agent |
+| QA | Codex | Gemini | Local reviewer agent |
+| Product | Gemini | Codex | Local reviewer agent |
+| UX | Gemini | Codex | Local reviewer agent |
 
 Check availability before assigning:
 
@@ -49,17 +49,22 @@ Check availability before assigning:
 "$CONSULT_SCRIPT" check
 ```
 
-If the preferred provider is unavailable or fails, move to the next in the chain. If neither external provider is available, use Claude subagent for all roles.
+If the preferred provider is unavailable or fails, move to the next in the chain. If neither external provider is available, use local reviewer agents for all roles.
 
 ## Dispatch Process
 
 ### 1. Find the consult script
 
-Read `~/.claude/plugins/installed_plugins.json`, find the `superpowers` entry's `installPath`, then construct:
+Find the Superpowers skill directory for the current platform, then construct:
 
 ```bash
 CONSULT_SCRIPT="<installPath>/skills/consulting-other-ais/scripts/consult.sh"
 ```
+
+Platform notes:
+- Claude Code dev plugin: read `~/.claude/plugins/installed_plugins.json`, find the `superpowers` entry's `installPath`.
+- Codex symlink install: resolve the `superpowers` skill directory under `~/.agents/skills/`, then use its parent as `<installPath>`.
+- If already running from this repo, use the repo root as `<installPath>`.
 
 ### 2. Check provider availability
 
@@ -100,13 +105,17 @@ For each role, read the template from `roles/<role>.md` (relative to this skill'
 "$CONSULT_SCRIPT" gemini "$POPULATED_PROMPT"
 ```
 
-**For Claude subagents:** Read the role template, substitute placeholders, and dispatch via the Agent tool with the populated prompt.
+**For local reviewer agents:** Read the role template, substitute placeholders, and dispatch via the platform's isolated-agent mechanism with the populated prompt.
 
-**Run all dispatches in parallel where possible.** Multiple Bash tool calls can run concurrently; subagent calls can run alongside external provider calls.
+Platform adapters:
+- Claude Code: use Task/Agent with `general-purpose`.
+- Codex: use `spawn_agent` with `agent_type: explorer` because role reviews are read-only.
+
+**Run all dispatches in parallel where possible.** Multiple shell calls can run concurrently; local reviewer-agent calls can run alongside external provider calls.
 
 ### 6. Handle failures
 
-If an external provider fails, retry with the next provider in the fallback chain. If all external providers fail for a role, fall back to Claude subagent. Track which provider actually handled each role — this matters for the synthesis.
+If an external provider fails, retry with the next provider in the fallback chain. If all external providers fail for a role, fall back to a local reviewer agent. Track which provider actually handled each role — this matters for the synthesis.
 
 ## Synthesize Results
 
